@@ -449,9 +449,15 @@ function uploadPhotos_(userName, dateStr, photoDataArray) {
 
   photoDataArray.forEach(function(photoData, index) {
     var blob = decodeBase64ToBlob_(photoData.data, photoData.mimeType, photoData.fileName || (userName + '_' + dateStr + '_' + (index + 1) + '.jpg'));
-    var file = userFolder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    userFolder.createFile(blob);
   });
+
+  // พยายามแชร์โฟลเดอร์ (ถ้าไม่มีสิทธิ์ก็ข้ามไป ไม่ crash)
+  try {
+    userFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (e) {
+    // ไม่มีสิทธิ์แชร์ ข้ามไป - Admin ยังเข้าถึง Drive ได้โดยตรง
+  }
 
   return userFolder.getUrl();
 }
