@@ -210,13 +210,38 @@ function getAdminAppData(token) {
 
   var pendingRequests = requests.filter(function(r) { return r.Status === 'Pending'; });
 
-  // สถิติรายเดือน
+  // สถิติรายเดือน (แยก On_Time / Late)
   var monthlyStats = {};
+  var monthlyOnTime = {};
+  var monthlyLate = {};
   logs.forEach(function(l) {
     if (l.Date) {
       var month = l.Date.substring(0, 7);
       monthlyStats[month] = (monthlyStats[month] || 0) + 1;
+      if (l.Status === 'Late' || l.Status === 'Late_Report') {
+        monthlyLate[month] = (monthlyLate[month] || 0) + 1;
+      } else {
+        monthlyOnTime[month] = (monthlyOnTime[month] || 0) + 1;
+      }
     }
+  });
+
+  // สถิติวันนี้
+  var todayOnTime = todayLogs.filter(function(l) { return l.Status === 'On_Time' || l.Status === 'Completed'; }).length;
+  var todayLate = todayLogs.filter(function(l) { return l.Status === 'Late' || l.Status === 'Late_Report'; }).length;
+
+  // สถิติผู้ใช้
+  var activeUsers = users.filter(function(u) { return u.Status === 'Active' && u.Role !== 'Admin'; });
+  var pendingUsers = users.filter(function(u) { return u.Status === 'Pending'; });
+  var unregUsers = users.filter(function(u) { return u.Status === 'Unregistered'; });
+
+  // สถิติรวมทั้งหมด
+  var totalOnTime = logs.filter(function(l) { return l.Status === 'On_Time' || l.Status === 'Completed'; }).length;
+  var totalLate = logs.filter(function(l) { return l.Status === 'Late' || l.Status === 'Late_Report'; }).length;
+
+  // รายชื่อผู้มาปฏิบัติงานวันนี้
+  var todayAttendanceList = todayLogs.map(function(l) {
+    return { name: l.Name, timeIn: l.Time_In, status: l.Status, distance: l.Distance_m || '-' };
   });
 
   return {
@@ -227,11 +252,23 @@ function getAdminAppData(token) {
     requests: requests,
     today: today,
     todayAttendanceCount: todayLogs.length,
+    todayOnTime: todayOnTime,
+    todayLate: todayLate,
+    todayAttendanceList: todayAttendanceList,
     activeCyclesCount: cycles.filter(function(c) { return c.Status === 'Active'; }).length,
+    activeUsersCount: activeUsers.length,
+    pendingUsersCount: pendingUsers.length,
+    unregUsersCount: unregUsers.length,
     pendingRequestsCount: pendingRequests.length,
+    pendingPlansCount: Object.keys(pendingSubmissions).length,
+    totalOnTime: totalOnTime,
+    totalLate: totalLate,
+    totalLogs: logs.length,
     pendingSubmissions: Object.values(pendingSubmissions),
     pendingRequests: pendingRequests,
-    monthlyStats: monthlyStats
+    monthlyStats: monthlyStats,
+    monthlyOnTime: monthlyOnTime,
+    monthlyLate: monthlyLate
   };
 }
 

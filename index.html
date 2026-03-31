@@ -1152,34 +1152,144 @@ function doRejectUser(userId) {
 // ==================== ADMIN: DASHBOARD ====================
 function renderDashboard(area) {
   var d = APP.data;
-  var html = '<h2 class="text-xl font-bold text-forest-800 mb-4">📊 Dashboard</h2>';
+  var onTimeRate = d.totalLogs > 0 ? Math.round((d.totalOnTime / d.totalLogs) * 100) : 0;
+  var todayDate = d.today || formatDate_(new Date());
 
-  html += '<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">';
-  html += '<div class="stat-card"><p class="text-sm text-gray-500">ผู้มาปฏิบัติงานวันนี้</p><p class="text-3xl font-bold text-forest-600">' + d.todayAttendanceCount + '</p><p class="text-xs text-gray-400">คน</p></div>';
-  html += '<div class="stat-card" style="border-left-color:#f59e0b"><p class="text-sm text-gray-500">รอบงานที่กำลังดำเนินการ</p><p class="text-3xl font-bold text-amber-600">' + d.activeCyclesCount + '</p><p class="text-xs text-gray-400">รอบ</p></div>';
-  html += '<div class="stat-card" style="border-left-color:#ef4444"><p class="text-sm text-gray-500">คำร้องรอดำเนินการ</p><p class="text-3xl font-bold text-red-500">' + d.pendingRequestsCount + '</p><p class="text-xs text-gray-400">รายการ</p></div>';
+  // หัวข้อ + วันที่
+  var html = '<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">';
+  html += '<h2 class="text-xl font-bold text-forest-800">📊 Dashboard</h2>';
+  html += '<p class="text-sm text-gray-500">📅 ' + formatThaiDate(todayDate) + '</p>';
   html += '</div>';
 
-  // กราฟ
-  html += '<div class="card mb-6"><h3 class="font-semibold text-forest-700 mb-3">สถิติการมาปฏิบัติงานรายเดือน</h3>';
-  html += '<div style="max-height:300px;"><canvas id="monthlyChart"></canvas></div></div>';
+  // แถบแจ้งเตือนงานที่ต้องดำเนินการ
+  var totalPending = (d.pendingPlansCount || 0) + (d.pendingRequestsCount || 0) + (d.pendingUsersCount || 0);
+  if (totalPending > 0) {
+    html += '<div class="bg-amber-50 border-l-4 border-amber-400 rounded-r-xl p-3 mb-4 flex items-start gap-3">';
+    html += '<span class="text-2xl">⚡</span><div>';
+    html += '<p class="font-semibold text-amber-800 text-sm">มีงานรอดำเนินการ ' + totalPending + ' รายการ</p>';
+    html += '<div class="flex flex-wrap gap-3 mt-1 text-xs text-amber-700">';
+    if (d.pendingPlansCount > 0) html += '<span>� แผนรออนุมัติ ' + d.pendingPlansCount + '</span>';
+    if (d.pendingRequestsCount > 0) html += '<span>📝 คำร้องรอดำเนินการ ' + d.pendingRequestsCount + '</span>';
+    if (d.pendingUsersCount > 0) html += '<span>👤 ผู้ใช้รออนุมัติ ' + d.pendingUsersCount + '</span>';
+    html += '</div></div></div>';
+  }
+
+  // Stat Cards - Row 1: ข้อมูลวันนี้
+  html += '<p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">สรุปวันนี้</p>';
+  html += '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">';
+  html += '<div class="stat-card"><p class="text-xs text-gray-500">มาปฏิบัติงาน</p><p class="text-3xl font-bold text-forest-600">' + d.todayAttendanceCount + '</p><p class="text-xs text-gray-400">คน</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#22c55e"><p class="text-xs text-gray-500">ตรงเวลา</p><p class="text-3xl font-bold text-green-500">' + (d.todayOnTime || 0) + '</p><p class="text-xs text-gray-400">คน</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#ef4444"><p class="text-xs text-gray-500">มาสาย</p><p class="text-3xl font-bold text-red-500">' + (d.todayLate || 0) + '</p><p class="text-xs text-gray-400">คน</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#6b7280"><p class="text-xs text-gray-500">ยังไม่มา</p><p class="text-3xl font-bold text-gray-500">' + Math.max(0, (d.activeUsersCount || 0) - d.todayAttendanceCount) + '</p><p class="text-xs text-gray-400">คน</p></div>';
+  html += '</div>';
+
+  // Stat Cards - Row 2: ข้อมูลภาพรวม
+  html += '<p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">ภาพรวมระบบ</p>';
+  html += '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">';
+  html += '<div class="stat-card" style="border-left-color:#3b82f6"><p class="text-xs text-gray-500">เจ้าหน้าที่ทั้งหมด</p><p class="text-3xl font-bold text-blue-600">' + (d.activeUsersCount || 0) + '</p><p class="text-xs text-gray-400">คน (Active)</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#f59e0b"><p class="text-xs text-gray-500">รอบงานดำเนินการ</p><p class="text-3xl font-bold text-amber-600">' + d.activeCyclesCount + '</p><p class="text-xs text-gray-400">รอบ</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#8b5cf6"><p class="text-xs text-gray-500">บันทึกทั้งหมด</p><p class="text-3xl font-bold text-purple-600">' + (d.totalLogs || 0) + '</p><p class="text-xs text-gray-400">ครั้ง</p></div>';
+  html += '<div class="stat-card" style="border-left-color:' + (onTimeRate >= 80 ? '#22c55e' : onTimeRate >= 60 ? '#f59e0b' : '#ef4444') + '"><p class="text-xs text-gray-500">อัตราตรงเวลา</p><p class="text-3xl font-bold" style="color:' + (onTimeRate >= 80 ? '#22c55e' : onTimeRate >= 60 ? '#f59e0b' : '#ef4444') + '">' + onTimeRate + '%</p><p class="text-xs text-gray-400">จากทั้งหมด</p></div>';
+  html += '</div>';
+
+  // กราฟ 2 ชิ้น
+  html += '<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">';
+
+  // กราฟแท่ง - สถิติรายเดือน (ตรงเวลา vs สาย)
+  html += '<div class="card lg:col-span-2"><h3 class="font-semibold text-forest-700 mb-3">📈 สถิติรายเดือน (ตรงเวลา / สาย)</h3>';
+  html += '<div style="max-height:280px;"><canvas id="monthlyChart"></canvas></div></div>';
+
+  // กราฟโดนัท - สัดส่วนตรงเวลา/สาย
+  html += '<div class="card"><h3 class="font-semibold text-forest-700 mb-3">🎯 สัดส่วนการมาปฏิบัติงาน</h3>';
+  html += '<div style="max-height:220px;display:flex;align-items:center;justify-content:center;"><canvas id="onTimeChart"></canvas></div>';
+  html += '<div class="grid grid-cols-2 gap-2 mt-3">';
+  html += '<div class="text-center bg-green-50 rounded-lg p-2"><p class="text-xs text-gray-500">ตรงเวลา</p><p class="text-lg font-bold text-green-600">' + (d.totalOnTime || 0) + '</p></div>';
+  html += '<div class="text-center bg-red-50 rounded-lg p-2"><p class="text-xs text-gray-500">สาย</p><p class="text-lg font-bold text-red-500">' + (d.totalLate || 0) + '</p></div>';
+  html += '</div></div>';
+
+  html += '</div>';
+
+  // ตารางผู้มาปฏิบัติงานวันนี้
+  html += '<div class="card">';
+  html += '<h3 class="font-semibold text-forest-700 mb-3">📋 รายชื่อผู้มาปฏิบัติงานวันนี้</h3>';
+  var attendList = d.todayAttendanceList || [];
+  if (attendList.length > 0) {
+    html += '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr>';
+    html += '<th class="text-left p-2 bg-forest-600 text-white rounded-tl-lg">#</th>';
+    html += '<th class="text-left p-2 bg-forest-600 text-white">ชื่อ</th>';
+    html += '<th class="text-left p-2 bg-forest-600 text-white">เวลาเข้า</th>';
+    html += '<th class="text-left p-2 bg-forest-600 text-white">ระยะห่าง</th>';
+    html += '<th class="text-left p-2 bg-forest-600 text-white rounded-tr-lg">สถานะ</th>';
+    html += '</tr></thead><tbody>';
+    attendList.forEach(function(a, idx) {
+      var statusBadge = (a.status === 'Late' || a.status === 'Late_Report')
+        ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">สาย</span>'
+        : '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">ตรงเวลา</span>';
+      var distText = a.distance !== '-' ? a.distance + ' ม.' : '-';
+      var timeOnly = a.timeIn ? a.timeIn.split(' ').pop() : '-';
+      html += '<tr class="border-b border-gray-100">';
+      html += '<td class="p-2 text-gray-400">' + (idx + 1) + '</td>';
+      html += '<td class="p-2 font-medium">' + a.name + '</td>';
+      html += '<td class="p-2 text-gray-600">' + timeOnly + '</td>';
+      html += '<td class="p-2 text-gray-500">' + distText + '</td>';
+      html += '<td class="p-2">' + statusBadge + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+  } else {
+    html += '<div class="text-center py-6"><p class="text-gray-400 text-lg">🕐</p><p class="text-gray-400 text-sm">ยังไม่มีผู้มาปฏิบัติงานวันนี้</p></div>';
+  }
+  html += '</div>';
 
   area.innerHTML = html;
 
   // วาดกราฟ
   setTimeout(function() {
-    var ctx = document.getElementById('monthlyChart');
-    if (!ctx) return;
-    var labels = Object.keys(d.monthlyStats).sort();
-    var values = labels.map(function(k) { return d.monthlyStats[k]; });
-    new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: labels.map(function(l) { var p = l.split('-'); return p[1] + '/' + p[0]; }),
-        datasets: [{ label: 'จำนวนครั้ง', data: values, backgroundColor: 'rgba(61,139,65,0.6)', borderColor: '#3d8b41', borderWidth: 1, borderRadius: 8 }]
-      },
-      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }, plugins: { legend: { display: false } } }
-    });
+    // กราฟแท่ง - Stacked On_Time / Late
+    var ctx1 = document.getElementById('monthlyChart');
+    if (ctx1) {
+      var labels = Object.keys(d.monthlyStats || {}).sort();
+      var onTimeData = labels.map(function(k) { return (d.monthlyOnTime || {})[k] || 0; });
+      var lateData = labels.map(function(k) { return (d.monthlyLate || {})[k] || 0; });
+      new Chart(ctx1, {
+        type: 'bar',
+        data: {
+          labels: labels.map(function(l) { var p = l.split('-'); return p[1] + '/' + p[0]; }),
+          datasets: [
+            { label: 'ตรงเวลา', data: onTimeData, backgroundColor: 'rgba(34,197,94,0.7)', borderColor: '#22c55e', borderWidth: 1, borderRadius: 4 },
+            { label: 'สาย', data: lateData, backgroundColor: 'rgba(239,68,68,0.7)', borderColor: '#ef4444', borderWidth: 1, borderRadius: 4 }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } },
+          plugins: { legend: { position: 'top', labels: { usePointStyle: true, padding: 15 } } }
+        }
+      });
+    }
+
+    // กราฟโดนัท
+    var ctx2 = document.getElementById('onTimeChart');
+    if (ctx2) {
+      var otTotal = d.totalOnTime || 0;
+      var ltTotal = d.totalLate || 0;
+      if (otTotal + ltTotal === 0) { otTotal = 1; }
+      new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+          labels: ['ตรงเวลา', 'สาย'],
+          datasets: [{ data: [otTotal, ltTotal], backgroundColor: ['#22c55e', '#ef4444'], borderWidth: 2, borderColor: '#fff' }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          cutout: '65%',
+          plugins: {
+            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 10 } },
+            tooltip: { callbacks: { label: function(c) { var total = c.dataset.data.reduce(function(a,b){return a+b},0); return c.label + ': ' + c.raw + ' (' + Math.round(c.raw/total*100) + '%)'; } } }
+          }
+        }
+      });
+    }
   }, 100);
 }
 
