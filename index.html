@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>ระบบรายงานการปฏิบัติงาน อุทยานแห่งชาติเอราวัณ</title>
   <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
@@ -102,7 +105,9 @@
         <h1 class="text-2xl font-bold text-forest-800">ระบบรายงานการปฏิบัติงาน</h1>
         <p class="text-earth-600 mt-1">อุทยานแห่งชาติเอราวัณ</p>
       </div>
-      <div class="space-y-4">
+
+      <!-- Login Form -->
+      <div id="loginForm" class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-forest-700 mb-1">ชื่อผู้ใช้</label>
           <input type="text" id="loginUsername" class="input-field" placeholder="กรอกชื่อผู้ใช้">
@@ -112,6 +117,31 @@
           <input type="password" id="loginPassword" class="input-field" placeholder="กรอกรหัสผ่าน" onkeydown="if(event.key==='Enter')doLogin()">
         </div>
         <button onclick="doLogin()" class="btn-primary w-full text-center text-lg py-3">เข้าสู่ระบบ</button>
+        <p class="text-center text-sm text-gray-500">ยังไม่มีรหัสผ่าน? <a href="#" onclick="showRegisterForm(); return false;" class="text-forest-600 font-medium hover:underline">ลงทะเบียน</a></p>
+      </div>
+
+      <!-- Register Form -->
+      <div id="registerForm" style="display:none;" class="space-y-4">
+        <div class="bg-blue-50 rounded-xl p-3 text-sm text-blue-700">
+          <p class="font-medium">📋 ลงทะเบียนผู้ใช้งาน</p>
+          <p class="text-xs mt-1">เลือกชื่อของคุณจากรายการ แล้วตั้งรหัสผ่าน หลังลงทะเบียนกรุณารอผู้ดูแลระบบอนุมัติ</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-forest-700 mb-1">เลือกชื่อของคุณ</label>
+          <select id="regUserSelect" class="input-field">
+            <option value="">-- กำลังโหลดรายชื่อ... --</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-forest-700 mb-1">ตั้งรหัสผ่าน</label>
+          <input type="password" id="regPassword" class="input-field" placeholder="อย่างน้อย 4 ตัวอักษร">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-forest-700 mb-1">ยืนยันรหัสผ่าน</label>
+          <input type="password" id="regPasswordConfirm" class="input-field" placeholder="กรอกรหัสผ่านอีกครั้ง" onkeydown="if(event.key==='Enter')doRegister()">
+        </div>
+        <button onclick="doRegister()" class="btn-primary w-full text-center text-lg py-3">ลงทะเบียน</button>
+        <p class="text-center text-sm text-gray-500">มีรหัสผ่านแล้ว? <a href="#" onclick="showLoginForm(); return false;" class="text-forest-600 font-medium hover:underline">เข้าสู่ระบบ</a></p>
       </div>
     </div>
   </div>
@@ -227,23 +257,30 @@ window.onerror = function(msg, url, line) {
   return false;
 };
 
+var APP_VERSION = '2.1.0';
+
 window.addEventListener('DOMContentLoaded', function() {
+  var savedVer = localStorage.getItem('erawan_version');
+  if (savedVer !== APP_VERSION) {
+    localStorage.setItem('erawan_version', APP_VERSION);
+    if (savedVer) { localStorage.removeItem('erawan_token'); return; }
+  }
   var saved = localStorage.getItem('erawan_token');
   if (saved) {
     showLoading('กำลังตรวจสอบสถานะ...');
-    google.script.run.withSuccessHandler(function(user) {
+    google.script.run.withSuccessHandler(function(res) {
       hideLoading();
-      if (user) {
+      if (res.valid) {
         APP.token = saved;
-        APP.user = user;
-        enterApp();
+        APP.user = res.user;
+        enterApp(res.appData);
       } else {
         localStorage.removeItem('erawan_token');
       }
     }).withFailureHandler(function() {
       hideLoading();
       localStorage.removeItem('erawan_token');
-    }).getSessionUser(saved);
+    }).restoreSessionAndGetData(saved);
   }
 });
 
@@ -260,14 +297,14 @@ function doLogin() {
       APP.token = res.token;
       APP.user = res.user;
       localStorage.setItem('erawan_token', res.token);
-      enterApp();
+      enterApp(res.appData);
     } else {
       Swal.fire('เข้าสู่ระบบไม่สำเร็จ', res.message, 'error');
     }
   }).withFailureHandler(function(err) {
     Swal.close();
     Swal.fire('ข้อผิดพลาด', err.message, 'error');
-  }).login(u, p);
+  }).loginAndGetData(u, p);
 }
 
 function doLogout() {
@@ -276,24 +313,75 @@ function doLogout() {
   localStorage.removeItem('erawan_token');
   document.getElementById('mainApp').style.display = 'none';
   document.getElementById('loginPage').style.display = 'flex';
+  showLoginForm();
+}
+
+function showLoginForm() {
+  document.getElementById('loginForm').style.display = 'block';
+  document.getElementById('registerForm').style.display = 'none';
   document.getElementById('loginUsername').value = '';
   document.getElementById('loginPassword').value = '';
 }
 
+function showRegisterForm() {
+  document.getElementById('loginForm').style.display = 'none';
+  document.getElementById('registerForm').style.display = 'block';
+  document.getElementById('regPassword').value = '';
+  document.getElementById('regPasswordConfirm').value = '';
+  var sel = document.getElementById('regUserSelect');
+  sel.innerHTML = '<option value="">-- กำลังโหลดรายชื่อ... --</option>';
+  google.script.run.withSuccessHandler(function(users) {
+    sel.innerHTML = '';
+    if (users.length === 0) {
+      sel.innerHTML = '<option value="">-- ไม่มีรายชื่อที่ลงทะเบียนได้ --</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">-- เลือกชื่อของคุณ --</option>';
+    users.forEach(function(u) {
+      var opt = document.createElement('option');
+      opt.value = u.id;
+      opt.textContent = u.name;
+      sel.appendChild(opt);
+    });
+  }).withFailureHandler(function() {
+    sel.innerHTML = '<option value="">-- โหลดรายชื่อไม่สำเร็จ --</option>';
+  }).getUnregisteredUsers();
+}
+
+function doRegister() {
+  var userId = document.getElementById('regUserSelect').value;
+  var pw = document.getElementById('regPassword').value;
+  var pw2 = document.getElementById('regPasswordConfirm').value;
+  if (!userId) { Swal.fire('แจ้งเตือน', 'กรุณาเลือกชื่อของคุณ', 'warning'); return; }
+  if (!pw) { Swal.fire('แจ้งเตือน', 'กรุณากรอกรหัสผ่าน', 'warning'); return; }
+  if (pw.length < 4) { Swal.fire('แจ้งเตือน', 'รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร', 'warning'); return; }
+  if (pw !== pw2) { Swal.fire('แจ้งเตือน', 'รหัสผ่านไม่ตรงกัน', 'warning'); return; }
+
+  Swal.fire({ title: 'กำลังลงทะเบียน...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+  google.script.run.withSuccessHandler(function(res) {
+    if (res.success) {
+      Swal.fire('สำเร็จ!', res.message, 'success').then(function() { showLoginForm(); });
+    } else {
+      Swal.fire('ไม่สำเร็จ', res.message, 'error');
+    }
+  }).withFailureHandler(function(err) {
+    Swal.fire('ข้อผิดพลาด', err.message, 'error');
+  }).registerUser(userId, pw);
+}
+
 // ==================== ENTER APP ====================
-function enterApp() {
+function enterApp(preloadedData) {
   try {
     document.getElementById('loginPage').style.display = 'none';
     document.getElementById('mainApp').style.display = 'flex';
     document.getElementById('navUserName').textContent = APP.user.name + ' (' + APP.user.role + ')';
     document.getElementById('mobileUserName').textContent = APP.user.name + ' (' + APP.user.role + ')';
     hideError();
-    if (APP.user.role === 'Admin') {
-      setupAdminTabs();
-      loadAdminData();
+    if (preloadedData) {
+      APP.data = preloadedData;
+      if (APP.user.role === 'Admin') { setupAdminTabs(); } else { setupUserTabs(); }
     } else {
-      setupUserTabs();
-      loadUserData();
+      if (APP.user.role === 'Admin') { setupAdminTabs(); loadAdminData(); } else { setupUserTabs(); loadUserData(); }
     }
   } catch (e) {
     showError('เกิดข้อผิดพลาดในการโหลดหน้า: ' + e.message);
@@ -314,6 +402,7 @@ function setupUserTabs() {
 function setupAdminTabs() {
   var tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'manage_users', label: 'จัดการผู้ใช้', icon: '👥' },
     { id: 'cycles', label: 'จัดการรอบงาน', icon: '🔄' },
     { id: 'approve_plans', label: 'อนุมัติแผน', icon: '✅' },
     { id: 'approve_requests', label: 'อนุมัติคำร้อง', icon: '📝' },
@@ -406,6 +495,7 @@ function renderContent() {
       case 'workplan': renderWorkPlan(area); break;
       case 'schedule_req': renderScheduleRequest(area); break;
       case 'dashboard': renderDashboard(area); break;
+      case 'manage_users': renderManageUsers(area); break;
       case 'cycles': renderCycles(area); break;
       case 'approve_plans': renderApprovePlans(area); break;
       case 'approve_requests': renderApproveRequests(area); break;
@@ -650,8 +740,8 @@ function doCheckOut() {
 }
 
 function processPhotos(files) {
-  var maxWidth = 1200;
-  var quality = 0.7;
+  var maxWidth = 1024;
+  var quality = 0.65;
   var promises = files.map(function(file) {
     return new Promise(function(resolve) {
       var reader = new FileReader();
@@ -900,6 +990,133 @@ function submitScheduleChange() {
       Swal.fire('ไม่สำเร็จ', res.message, 'error');
     }
   }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).createScheduleChangeRequest(APP.token, APP.data.activeCycle.CycleID, orig, req, reason);
+}
+
+// ==================== ADMIN: USER MANAGEMENT ====================
+function renderManageUsers(area) {
+  var d = APP.data;
+  var users = d.users || [];
+  var pendingUsers = users.filter(function(u) { return u.Status === 'Pending'; });
+  var unregUsers = users.filter(function(u) { return u.Status === 'Unregistered'; });
+  var activeUsers = users.filter(function(u) { return u.Status === 'Active' && u.Role !== 'Admin'; });
+
+  var html = '<h2 class="text-xl font-bold text-forest-800 mb-4">👥 จัดการผู้ใช้งาน</h2>';
+
+  // สรุป
+  html += '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">';
+  html += '<div class="stat-card"><p class="text-xs text-gray-500">ใช้งานได้</p><p class="text-2xl font-bold text-green-600">' + activeUsers.length + '</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#f59e0b"><p class="text-xs text-gray-500">รอลงทะเบียน</p><p class="text-2xl font-bold text-amber-600">' + unregUsers.length + '</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#3b82f6"><p class="text-xs text-gray-500">รออนุมัติ</p><p class="text-2xl font-bold text-blue-600">' + pendingUsers.length + '</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#6b7280"><p class="text-xs text-gray-500">ทั้งหมด</p><p class="text-2xl font-bold text-gray-600">' + users.length + '</p></div>';
+  html += '</div>';
+
+  // เพิ่มผู้ใช้ใหม่
+  html += '<div class="card mb-4">';
+  html += '<h3 class="font-semibold text-forest-700 mb-3">➕ เพิ่มผู้ใช้ใหม่</h3>';
+  html += '<p class="text-xs text-gray-500 mb-3">สร้าง Username และชื่อให้ผู้ใช้ ผู้ใช้จะไปลงทะเบียนตั้งรหัสผ่านเอง</p>';
+  html += '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">';
+  html += '<input type="text" id="newUsername" class="input-field" placeholder="Username (ภาษาอังกฤษ)">';
+  html += '<input type="text" id="newName" class="input-field" placeholder="ชื่อ-นามสกุล">';
+  html += '<button onclick="doAddUser()" class="btn-primary text-center">เพิ่มผู้ใช้</button>';
+  html += '</div></div>';
+
+  // รออนุมัติ
+  if (pendingUsers.length > 0) {
+    html += '<div class="card mb-4">';
+    html += '<h3 class="font-semibold text-amber-700 mb-3">⏳ รอการอนุมัติ (' + pendingUsers.length + ' คน)</h3>';
+    html += '<div class="space-y-2">';
+    pendingUsers.forEach(function(u) {
+      html += '<div class="flex flex-col sm:flex-row sm:items-center justify-between bg-amber-50 border border-amber-200 rounded-xl p-3 gap-2">';
+      html += '<div><p class="font-medium text-sm">' + u.Name + '</p><p class="text-xs text-gray-500">Username: ' + u.Username + '</p></div>';
+      html += '<div class="flex gap-2">';
+      html += '<button onclick="doApproveUser(\'' + u.ID + '\')" class="btn-primary btn-sm">✅ อนุมัติ</button>';
+      html += '<button onclick="doRejectUser(\'' + u.ID + '\')" class="btn-danger btn-sm">❌ ปฏิเสธ</button>';
+      html += '</div></div>';
+    });
+    html += '</div></div>';
+  }
+
+  // รายชื่อผู้ใช้ทั้งหมด
+  html += '<div class="card">';
+  html += '<h3 class="font-semibold text-forest-700 mb-3">📋 รายชื่อผู้ใช้ทั้งหมด</h3>';
+  html += '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr>';
+  html += '<th class="text-left p-2 bg-forest-600 text-white rounded-tl-lg">ชื่อ</th>';
+  html += '<th class="text-left p-2 bg-forest-600 text-white">Username</th>';
+  html += '<th class="text-left p-2 bg-forest-600 text-white">บทบาท</th>';
+  html += '<th class="text-left p-2 bg-forest-600 text-white rounded-tr-lg">สถานะ</th>';
+  html += '</tr></thead><tbody>';
+  users.forEach(function(u) {
+    var statusBadge;
+    if (u.Status === 'Active') statusBadge = '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">ใช้งานได้</span>';
+    else if (u.Status === 'Pending') statusBadge = '<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">รออนุมัติ</span>';
+    else if (u.Status === 'Unregistered') statusBadge = '<span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">รอลงทะเบียน</span>';
+    else statusBadge = '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">' + (u.Status || '-') + '</span>';
+    var roleBadge = u.Role === 'Admin' ? '<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Admin</span>' : '<span class="text-xs bg-forest-100 text-forest-700 px-2 py-0.5 rounded-full">User</span>';
+    html += '<tr class="border-b border-gray-100"><td class="p-2 font-medium">' + u.Name + '</td><td class="p-2 text-gray-600">' + u.Username + '</td><td class="p-2">' + roleBadge + '</td><td class="p-2">' + statusBadge + '</td></tr>';
+  });
+  html += '</tbody></table></div></div>';
+
+  area.innerHTML = html;
+}
+
+function doAddUser() {
+  var username = document.getElementById('newUsername').value.trim();
+  var name = document.getElementById('newName').value.trim();
+  if (!username || !name) { Swal.fire('แจ้งเตือน', 'กรุณากรอก Username และชื่อ', 'warning'); return; }
+
+  Swal.fire({ title: 'กำลังเพิ่มผู้ใช้...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+  google.script.run.withSuccessHandler(function(res) {
+    if (res.success) {
+      Swal.fire('สำเร็จ!', 'เพิ่มผู้ใช้ "' + name + '" เรียบร้อย\nผู้ใช้สามารถไปลงทะเบียนตั้งรหัสผ่านได้', 'success');
+      loadAdminData();
+    } else {
+      Swal.fire('ไม่สำเร็จ', res.message, 'error');
+    }
+  }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).addUser(APP.token, username, name);
+}
+
+function doApproveUser(userId) {
+  Swal.fire({
+    title: 'อนุมัติผู้ใช้นี้?',
+    text: 'ผู้ใช้จะสามารถเข้าสู่ระบบได้',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#3d8b41',
+    confirmButtonText: 'อนุมัติ',
+    cancelButtonText: 'ยกเลิก'
+  }).then(function(result) {
+    if (result.isConfirmed) {
+      Swal.fire({ title: 'กำลังอนุมัติ...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+      google.script.run.withSuccessHandler(function(res) {
+        if (res.success) {
+          Swal.fire('สำเร็จ!', 'อนุมัติผู้ใช้เรียบร้อย', 'success');
+          loadAdminData();
+        } else { Swal.fire('ไม่สำเร็จ', res.message, 'error'); }
+      }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).approveUser(APP.token, userId);
+    }
+  });
+}
+
+function doRejectUser(userId) {
+  Swal.fire({
+    title: 'ปฏิเสธผู้ใช้นี้?',
+    text: 'รหัสผ่านจะถูกลบ ผู้ใช้ต้องลงทะเบียนใหม่',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#dc2626',
+    confirmButtonText: 'ปฏิเสธ',
+    cancelButtonText: 'ยกเลิก'
+  }).then(function(result) {
+    if (result.isConfirmed) {
+      Swal.fire({ title: 'กำลังดำเนินการ...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+      google.script.run.withSuccessHandler(function(res) {
+        if (res.success) {
+          Swal.fire('เรียบร้อย', 'ปฏิเสธการลงทะเบียนแล้ว', 'success');
+          loadAdminData();
+        } else { Swal.fire('ไม่สำเร็จ', res.message, 'error'); }
+      }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).rejectUser(APP.token, userId);
+    }
+  });
 }
 
 // ==================== ADMIN: DASHBOARD ====================

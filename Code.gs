@@ -4,7 +4,7 @@ var CONFIG = {
   DRIVE_FOLDER_ID: '1kch--KBTd15dXHVIKutMAFy7Hj5ARtBo',
   DEFAULT_ADMIN: { username: 'admin', password: 'admin1234', name: 'ผู้ดูแลระบบ', role: 'Admin' },
   SHEETS: {
-    Users:             ['ID', 'Username', 'Password', 'Name', 'Role'],
+    Users:             ['ID', 'Username', 'Password', 'Name', 'Role', 'Status'],
     AttendanceLog:     ['LogID', 'Date', 'Name', 'Time_In', 'Time_Out', 'Task_Report', 'Photo_URL', 'Status'],
     WorkCycles:        ['CycleID', 'UserID', 'Name', 'Start_Date', 'End_Date', 'Required_Work_Days', 'Status'],
     WorkPlans:         ['PlanID', 'Submission_ID', 'CycleID', 'UserID', 'Name', 'Plan_Date', 'Plan_Status', 'Notes', 'Completed_LogID', 'Created_At', 'Submitted_At', 'Approved_At'],
@@ -36,7 +36,7 @@ function ensureSetup_() {
   }
   if (!hasAdmin) {
     var id = 'U' + new Date().getTime();
-    usersSheet.appendRow([id, CONFIG.DEFAULT_ADMIN.username, CONFIG.DEFAULT_ADMIN.password, CONFIG.DEFAULT_ADMIN.name, CONFIG.DEFAULT_ADMIN.role]);
+    usersSheet.appendRow([id, CONFIG.DEFAULT_ADMIN.username, CONFIG.DEFAULT_ADMIN.password, CONFIG.DEFAULT_ADMIN.name, CONFIG.DEFAULT_ADMIN.role, 'Active']);
   }
 }
 
@@ -67,12 +67,19 @@ function initializeApp() {
 
 // ==================== AUTH ====================
 function login(username, password) {
-  ensureSetup_();
   var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   var sheet = ss.getSheetByName('Users');
+  if (!sheet) { ensureSetup_(); sheet = ss.getSheetByName('Users'); }
   var data = sheet.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
     if (data[i][1] === username && data[i][2] === password) {
+      var status = data[i][5] || 'Active';
+      if (status === 'Pending') {
+        return { success: false, message: 'บัญชีของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ' };
+      }
+      if (status === 'Unregistered') {
+        return { success: false, message: 'กรุณาลงทะเบียนตั้งรหัสผ่านก่อนเข้าใช้งาน' };
+      }
       var token = Utilities.getUuid();
       var userProps = PropertiesService.getUserProperties();
       userProps.setProperty('session_' + token, JSON.stringify({
@@ -82,6 +89,29 @@ function login(username, password) {
     }
   }
   return { success: false, message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
+}
+
+function loginAndGetData(username, password) {
+  var res = login(username, password);
+  if (!res.success) return res;
+  if (res.user.role === 'Admin') {
+    res.appData = getAdminAppData(res.token);
+  } else {
+    res.appData = getUserAppData(res.token);
+  }
+  return res;
+}
+
+function restoreSessionAndGetData(token) {
+  var user = getSessionUser(token);
+  if (!user) return { valid: false };
+  var appData;
+  if (user.role === 'Admin') {
+    appData = getAdminAppData(token);
+  } else {
+    appData = getUserAppData(token);
+  }
+  return { valid: true, user: user, appData: appData };
 }
 
 function logout(token) {
@@ -243,10 +273,15 @@ function createWorkPlan(token, cycleId, dates) {
   var now = formatDateTime_(new Date());
   var sheet = ss.getSheetByName('WorkPlans');
 
-  dates.forEach(function(date) {
-    var planId = 'PLN' + new Date().getTime() + Math.floor(Math.random() * 1000);
-    sheet.appendRow([planId, submissionId, cycleId, user.id, user.name, date, 'Pending', '', '', now, now, '']);
+  var rows = [];
+  dates.forEach(function(date, idx) {
+    var planId = 'PLN' + new Date().getTime() + '' + idx;
+    rows.push([planId, submissionId, cycleId, user.id, user.name, date, 'Pending', '', '', now, now, '']);
   });
+  if (rows.length > 0) {
+    var lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, rows.length, rows[0].length).setValues(rows);
+  }
 
   return { success: true, submissionId: submissionId, count: dates.length };
 }
@@ -552,10 +587,102 @@ function updatePlanCompletedLog_(ss, userId, date, logId) {
   }
 }
 
-// ==================== USER MANAGEMENT (Admin) ====================
+// ==================== USER MANAGEMENT & REGISTRATION ====================
 function getUsers(token) {
   var user = validateSession_(token);
   if (user.role !== 'Admin') throw new Error('ACCESS_DENIED');
   var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   return getSheetData_(ss, 'Users').map(function(u) { delete u.Password; return u; });
+}
+
+function getUnregisteredUsers() {
+  var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('Users');
+  if (!sheet) return [];
+  var data = sheet.getDataRange().getValues();
+  var result = [];
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][5] === 'Unregistered') {
+      result.push({ id: data[i][0], name: data[i][3] });
+    }
+  }
+  return result;
+}
+
+function registerUser(userId, password) {
+  if (!userId || !password) return { success: false, message: 'กรุณากรอกข้อมูลให้ครบ' };
+  if (password.length < 4) return { success: false, message: 'รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร' };
+
+  var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('Users');
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var idIdx = headers.indexOf('ID');
+  var pwIdx = headers.indexOf('Password');
+  var statusIdx = headers.indexOf('Status');
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][idIdx]) === String(userId) && data[i][statusIdx] === 'Unregistered') {
+      sheet.getRange(i + 1, pwIdx + 1).setValue(password);
+      sheet.getRange(i + 1, statusIdx + 1).setValue('Pending');
+      return { success: true, message: 'ลงทะเบียนสำเร็จ! กรุณารอผู้ดูแลระบบอนุมัติ' };
+    }
+  }
+  return { success: false, message: 'ไม่พบผู้ใช้หรือลงทะเบียนแล้ว' };
+}
+
+function addUser(token, username, name) {
+  var user = validateSession_(token);
+  if (user.role !== 'Admin') throw new Error('ACCESS_DENIED');
+  if (!username || !name) return { success: false, message: 'กรุณากรอก Username และชื่อ' };
+
+  var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('Users');
+  var data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][1] === username) return { success: false, message: 'Username "' + username + '" ถูกใช้งานแล้ว' };
+  }
+
+  var id = 'U' + new Date().getTime();
+  sheet.appendRow([id, username, '', name, 'User', 'Unregistered']);
+  return { success: true, userId: id };
+}
+
+function approveUser(token, userId) {
+  var user = validateSession_(token);
+  if (user.role !== 'Admin') throw new Error('ACCESS_DENIED');
+  var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('Users');
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var idIdx = headers.indexOf('ID');
+  var statusIdx = headers.indexOf('Status');
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][idIdx]) === String(userId) && data[i][statusIdx] === 'Pending') {
+      sheet.getRange(i + 1, statusIdx + 1).setValue('Active');
+      return { success: true };
+    }
+  }
+  return { success: false, message: 'ไม่พบผู้ใช้หรือสถานะไม่ถูกต้อง' };
+}
+
+function rejectUser(token, userId) {
+  var user = validateSession_(token);
+  if (user.role !== 'Admin') throw new Error('ACCESS_DENIED');
+  var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('Users');
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var idIdx = headers.indexOf('ID');
+  var statusIdx = headers.indexOf('Status');
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][idIdx]) === String(userId) && data[i][statusIdx] === 'Pending') {
+      sheet.getRange(i + 1, headers.indexOf('Password') + 1).setValue('');
+      sheet.getRange(i + 1, statusIdx + 1).setValue('Unregistered');
+      return { success: true };
+    }
+  }
+  return { success: false, message: 'ไม่พบผู้ใช้หรือสถานะไม่ถูกต้อง' };
 }
