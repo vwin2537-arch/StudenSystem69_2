@@ -3,9 +3,10 @@ var CONFIG = {
   SPREADSHEET_ID: '1yRrEV40jMMQCzycruoj8lIM0NPXTRhxXxUfvsaTO2uM',
   DRIVE_FOLDER_ID: '1kch--KBTd15dXHVIKutMAFy7Hj5ARtBo',
   DEFAULT_ADMIN: { username: 'admin', password: 'admin1234', name: 'ผู้ดูแลระบบ', role: 'Admin' },
+  CHECKIN_LOCATION: { lat: 14.37462, lng: 99.14541, radiusMeters: 1000, name: 'อุทยานแห่งชาติเอราวัณ' },
   SHEETS: {
     Users:             ['ID', 'Username', 'Password', 'Name', 'Role', 'Status'],
-    AttendanceLog:     ['LogID', 'Date', 'Name', 'Time_In', 'Time_Out', 'Task_Report', 'Photo_URL', 'Status'],
+    AttendanceLog:     ['LogID', 'Date', 'Name', 'Time_In', 'Time_Out', 'Task_Report', 'Photo_URL', 'Status', 'Latitude', 'Longitude', 'Distance_m'],
     WorkCycles:        ['CycleID', 'UserID', 'Name', 'Start_Date', 'End_Date', 'Required_Work_Days', 'Status'],
     WorkPlans:         ['PlanID', 'Submission_ID', 'CycleID', 'UserID', 'Name', 'Plan_Date', 'Plan_Status', 'Notes', 'Completed_LogID', 'Created_At', 'Submitted_At', 'Approved_At'],
     ScheduleRequests:  ['ReqID', 'CycleID', 'UserID', 'Name', 'Original_Date', 'Requested_Date', 'Reason', 'Status', 'Created_At', 'Decision_At']
@@ -375,7 +376,7 @@ function updateScheduleRequestStatus(token, reqId, newStatus) {
 }
 
 // ==================== CHECK IN / CHECK OUT ====================
-function checkIn(token) {
+function checkIn(token, latitude, longitude) {
   var user = validateSession_(token);
   var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   var now = new Date();
@@ -389,6 +390,17 @@ function checkIn(token) {
   if (totalMinutes < 485) {
     var waitMin = 485 - totalMinutes;
     return { success: false, message: 'ระบบเปิดให้ลงเวลาเข้างานตั้งแต่ 08:05 น. กรุณารออีก ' + waitMin + ' นาที' };
+  }
+
+  // ตรวจสอบพิกัด GPS
+  if (!latitude || !longitude) {
+    return { success: false, message: 'ไม่สามารถระบุตำแหน่งของคุณได้ กรุณาเปิด GPS แล้วลองอีกครั้ง' };
+  }
+  var loc = CONFIG.CHECKIN_LOCATION;
+  var distance = calculateDistance_(latitude, longitude, loc.lat, loc.lng);
+  var distanceRounded = Math.round(distance);
+  if (distance > loc.radiusMeters) {
+    return { success: false, message: 'คุณอยู่ห่างจากจุดลงเวลา (' + loc.name + ') ประมาณ ' + (distanceRounded >= 1000 ? (distanceRounded / 1000).toFixed(1) + ' กม.' : distanceRounded + ' เมตร') + '\nต้องอยู่ในรัศมีไม่เกิน ' + (loc.radiusMeters >= 1000 ? (loc.radiusMeters / 1000) + ' กม.' : loc.radiusMeters + ' เมตร') };
   }
 
   // ตรวจสอบว่าเป็นวันที่อยู่ในแผนที่อนุมัติแล้ว
@@ -414,12 +426,12 @@ function checkIn(token) {
   var logId = 'LOG' + now.getTime();
   var timeInDisplay = today + ' ' + currentTime;
   var sheet = ss.getSheetByName('AttendanceLog');
-  sheet.appendRow([logId, today, user.name, timeInDisplay, '', '', '', lateStatus]);
+  sheet.appendRow([logId, today, user.name, timeInDisplay, '', '', '', lateStatus, latitude, longitude, distanceRounded]);
 
   // อัพเดท Completed_LogID ใน WorkPlans
   updatePlanCompletedLog_(ss, user.id, today, logId);
 
-  return { success: true, logId: logId, timeIn: timeInDisplay, lateStatus: lateStatus };
+  return { success: true, logId: logId, timeIn: timeInDisplay, lateStatus: lateStatus, distance: distanceRounded };
 }
 
 function checkOut(token, taskReport, photoDataArray) {
@@ -556,6 +568,16 @@ function getSheetData_(ss, sheetName) {
     result.push(obj);
   }
   return result;
+}
+
+function calculateDistance_(lat1, lng1, lat2, lng2) {
+  var R = 6371000;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLng = (lng2 - lng1) * Math.PI / 180;
+  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+          Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function formatDate_(date) {

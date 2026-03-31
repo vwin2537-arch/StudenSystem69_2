@@ -641,7 +641,7 @@ function renderCheckIn(area) {
 function doCheckIn() {
   Swal.fire({
     title: 'ยืนยันลงเวลาเข้างาน?',
-    text: 'วันที่ ' + formatThaiDate(APP.data.today),
+    html: 'วันที่ ' + formatThaiDate(APP.data.today) + '<br><small class="text-gray-500">📍 ระบบจะตรวจสอบตำแหน่งของคุณ</small>',
     icon: 'question',
     showCancelButton: true,
     confirmButtonColor: '#3d8b41',
@@ -649,16 +649,37 @@ function doCheckIn() {
     cancelButtonText: 'ยกเลิก'
   }).then(function(result) {
     if (result.isConfirmed) {
-      Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
-      google.script.run.withSuccessHandler(function(res) {
-        if (res.success) {
-          var lateMsg = res.lateStatus === 'Late' ? '\n⚠️ สถานะ: มาสาย' : '\n✅ สถานะ: ตรงเวลา';
-          Swal.fire('สำเร็จ!', 'ลงเวลาเข้างานเรียบร้อย\nเวลา: ' + res.timeIn + lateMsg, res.lateStatus === 'Late' ? 'warning' : 'success');
-          loadUserData();
-        } else {
-          Swal.fire('ไม่สำเร็จ', res.message, 'error');
-        }
-      }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).checkIn(APP.token);
+      Swal.fire({ title: '📍 กำลังระบุตำแหน่ง...', text: 'กรุณารอสักครู่', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+      if (!navigator.geolocation) {
+        Swal.fire('ไม่รองรับ', 'เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง', 'error');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        function(pos) {
+          var lat = pos.coords.latitude;
+          var lng = pos.coords.longitude;
+          Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+          google.script.run.withSuccessHandler(function(res) {
+            if (res.success) {
+              var lateMsg = res.lateStatus === 'Late' ? '\n⚠️ สถานะ: มาสาย' : '\n✅ สถานะ: ตรงเวลา';
+              var distMsg = '\n📍 ระยะห่าง: ' + (res.distance >= 1000 ? (res.distance / 1000).toFixed(1) + ' กม.' : res.distance + ' เมตร');
+              Swal.fire('สำเร็จ!', 'ลงเวลาเข้างานเรียบร้อย\nเวลา: ' + res.timeIn + lateMsg + distMsg, res.lateStatus === 'Late' ? 'warning' : 'success');
+              loadUserData();
+            } else {
+              Swal.fire('ไม่สำเร็จ', res.message, 'error');
+            }
+          }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).checkIn(APP.token, lat, lng);
+        },
+        function(err) {
+          var msgs = {
+            1: 'คุณปฏิเสธการเข้าถึงตำแหน่ง กรุณาอนุญาตให้เข้าถึงตำแหน่งในการตั้งค่าเบราว์เซอร์แล้วลองอีกครั้ง',
+            2: 'ไม่สามารถระบุตำแหน่งได้ กรุณาเปิด GPS แล้วลองอีกครั้ง',
+            3: 'หมดเวลาในการระบุตำแหน่ง กรุณาลองอีกครั้ง'
+          };
+          Swal.fire('ระบุตำแหน่งไม่สำเร็จ', msgs[err.code] || 'เกิดข้อผิดพลาดในการระบุตำแหน่ง', 'error');
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
     }
   });
 }

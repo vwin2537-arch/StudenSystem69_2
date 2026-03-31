@@ -9,7 +9,7 @@
  2. ส่วนโครงสร้างฐานข้อมูล (Database & Storage) กำหนดให้ใช้ Google Sheet ID: https://docs.google.com/spreadsheets/d/1yRrEV40jMMQCzycruoj8lIM0NPXTRhxXxUfvsaTO2uM/edit?usp=sharing และ Google Drive Folder ID: https://drive.google.com/drive/folders/1kch--KBTd15dXHVIKutMAFy7Hj5ARtBo?usp=sharing โดยให้ระบบสร้างชีต (Tab) อัตโนมัติหากยังไม่มี และตรวจสอบว่าคอลัมน์ครบเสมอ ดังนี้:
  ชีต "Users": ID, Username, Password, Name, Role, Status
  หมายเหตุ: คอลัมน์ `Status` ใช้จัดการสถานะผู้ใช้ โดยมี 3 ค่า: `Unregistered` (Admin สร้างให้แล้วแต่ยังไม่ตั้งรหัสผ่าน), `Pending` (ลงทะเบียนแล้วรออนุมัติ), `Active` (อนุมัติแล้ว เข้าใช้งานได้)
- ชีต "AttendanceLog": LogID, Date, Name, Time_In, Time_Out, Task_Report, Photo_URL, Status
+ ชีต "AttendanceLog": LogID, Date, Name, Time_In, Time_Out, Task_Report, Photo_URL, Status, Latitude, Longitude, Distance_m
  ชีต "WorkCycles": CycleID, UserID, Name, Start_Date, End_Date, Required_Work_Days, Status
  ชีต "WorkPlans": PlanID, Submission_ID, CycleID, UserID, Name, Plan_Date, Plan_Status, Notes, Completed_LogID, Created_At, Submitted_At, Approved_At
  ชีต "ScheduleRequests": ReqID, CycleID, UserID, Name, Original_Date, Requested_Date, Reason, Status, Created_At, Decision_At
@@ -48,9 +48,10 @@
  createWorkPlan() สำหรับบันทึกแผนวันทำงานหลายวันในครั้งเดียว และผูกเป็นชุดด้วย Submission_ID
  updateWorkPlanApprovalStatus() สำหรับอนุมัติหรือไม่อนุมัติแผนวันทำงานทั้งชุด
  createScheduleChangeRequest() และ updateScheduleRequestStatus() สำหรับสร้างและจัดการคำร้องขอสลับวันปฏิบัติงาน
- checkIn() สำหรับบันทึกเวลาเข้างาน โดยต้องตรวจสอบก่อนว่าเป็นวันที่อยู่ในแผนที่อนุมัติแล้ว
+ checkIn(token, latitude, longitude) สำหรับบันทึกเวลาเข้างาน โดยต้องตรวจสอบพิกัด GPS ว่าอยู่ในรัศมีที่กำหนด และตรวจสอบว่าเป็นวันที่อยู่ในแผนที่อนุมัติแล้ว บันทึกพิกัดลง AttendanceLog
  checkOut() สำหรับบันทึกเวลาออกงาน รายงานผล และรูปภาพแนบ พร้อมเชื่อมโยงกับบันทึกการเข้างานของวันนั้น
  ฟังก์ชันรับไฟล์รูปภาพแบบ Base64 ถอดรหัสและบันทึกลง Google Drive อัตโนมัติ พร้อมตั้งค่าการแชร์ไฟล์เป็นสาธารณะ ("Anyone with the link can view") และคืนค่า URL กลับมาบันทึกลง Sheet
+ calculateDistance_(lat1, lng1, lat2, lng2) — คำนวณระยะทางระหว่าง 2 พิกัดด้วยสูตร Haversine (หน่วยเมตร)
  ฟังก์ชันช่วยเหลือเพิ่มเติมสำหรับการคำนวณวันในรอบงาน, การนับวันที่ปฏิบัติงานแล้ว, การ normalize สถานะแผน, การตรวจสอบสิทธิ์การเช็คชื่อ, และการสรุปข้อมูลเพื่อแสดงผลหน้าเว็บ
  ฟังก์ชันระบบลงทะเบียนผู้ใช้:
  - getUnregisteredUsers() — ดึงรายชื่อผู้ใช้ที่ยังไม่ลงทะเบียน (public, ไม่ต้อง login)
@@ -67,7 +68,9 @@
  6. ส่วนกติกาธุรกิจ (Business Rules) ระบบต้องยึดกติกาสำคัญดังนี้:
  รอบงานมาตรฐาน 1 รอบ = 90 วัน
  เจ้าหน้าที่ต้องเลือกวันปฏิบัติงาน 30 วันต่อรอบ
- จะเช็คชื่อเข้างานได้เฉพาะวันที่อยู่ในแผนที่ได้รับการอนุมัติแล้ว
+ จะเช็คชื่อเข้างานได้เฉพาะวันที่อยู่ในแผนที่ได้รับการอนุมัติแล้ว และต้องอยู่ในรัศมีไม่เกิน 1 กิโลเมตรจากจุดลงเวลา (พิกัด 14.37462, 99.14541)
+ ระบบตรวจสอบพิกัด GPS ผ่าน HTML5 Geolocation API (enableHighAccuracy) และคำนวณระยะทางด้วยสูตร Haversine บันทึกพิกัดและระยะทางลง AttendanceLog เพื่อตรวจสอบย้อนหลัง
+ หากผู้ใช้ปิด GPS หรือปฏิเสธการเข้าถึงตำแหน่ง ระบบจะแจ้งข้อความที่ชัดเจนให้เปิด GPS แล้วลองใหม่
  หากยังไม่ส่งแผน หรือแผนยังไม่อนุมัติ ต้องไม่สามารถเช็คชื่อได้
  หากมีแผนที่รออนุมัติอยู่แล้ว ต้องไม่สามารถส่งแผนใหม่ซ้ำได้
  การขอสลับวันต้องอ้างอิงจากวันเดิมที่อยู่ในแผน และวันใหม่ต้องอยู่ภายในรอบงานเดียวกัน
