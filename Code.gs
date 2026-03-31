@@ -625,7 +625,7 @@ function registerUser(userId, password) {
     if (String(data[i][idIdx]) === String(userId) && data[i][statusIdx] === 'Unregistered') {
       sheet.getRange(i + 1, pwIdx + 1).setValue(password);
       sheet.getRange(i + 1, statusIdx + 1).setValue('Pending');
-      return { success: true, message: 'ลงทะเบียนสำเร็จ! กรุณารอผู้ดูแลระบบอนุมัติ' };
+      return { success: true, message: 'ลงทะเบียนสำเร็จ! กรุณารอผู้ดูแลระบบอนุมัติ', username: data[i][headers.indexOf('Username')], name: data[i][headers.indexOf('Name')] };
     }
   }
   return { success: false, message: 'ไม่พบผู้ใช้หรือลงทะเบียนแล้ว' };

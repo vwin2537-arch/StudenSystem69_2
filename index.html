@@ -358,7 +358,18 @@ function doRegister() {
   Swal.fire({ title: 'กำลังลงทะเบียน...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
   google.script.run.withSuccessHandler(function(res) {
     if (res.success) {
-      Swal.fire('สำเร็จ!', res.message, 'success').then(function() { showLoginForm(); });
+      Swal.fire({
+        icon: 'success',
+        title: 'ลงทะเบียนสำเร็จ!',
+        html: '<div style="text-align:left;background:#f0fdf4;border-radius:12px;padding:16px;margin-top:8px;">'
+          + '<p style="font-size:14px;color:#666;margin-bottom:8px;">กรุณาจดจำข้อมูลด้านล่างสำหรับเข้าสู่ระบบ:</p>'
+          + '<p style="margin:4px 0;"><strong>ชื่อผู้ใช้ (Username):</strong> <span style="color:#2d6f31;font-size:18px;font-weight:bold;">' + res.username + '</span></p>'
+          + '<p style="margin:4px 0;"><strong>รหัสผ่าน (Password):</strong> <span style="color:#2d6f31;font-size:18px;font-weight:bold;">' + pw + '</span></p>'
+          + '</div>'
+          + '<p style="font-size:12px;color:#999;margin-top:12px;">กรุณารอผู้ดูแลระบบอนุมัติก่อนเข้าใช้งาน<br>หากข้อมูลไม่ถูกต้อง กรุณาติดต่อแอดมิน</p>',
+        confirmButtonText: 'รับทราบ',
+        confirmButtonColor: '#3d8b41'
+      }).then(function() { showLoginForm(); });
     } else {
       Swal.fire('ไม่สำเร็จ', res.message, 'error');
     }
