@@ -3,10 +3,11 @@ var CONFIG = {
   SPREADSHEET_ID: '1yRrEV40jMMQCzycruoj8lIM0NPXTRhxXxUfvsaTO2uM',
   DRIVE_FOLDER_ID: '1kch--KBTd15dXHVIKutMAFy7Hj5ARtBo',
   DEFAULT_ADMIN: { username: 'admin', password: 'admin1234', name: 'ผู้ดูแลระบบ', role: 'Admin' },
+  DEV_MODE: true, // ⚠️ เปลี่ยนเป็น false ก่อน deploy จริง — true = ข้ามการตรวจระยะ GPS (ยังบันทึกพิกัดปกติ)
   CHECKIN_LOCATION: { lat: 14.37462, lng: 99.14541, radiusMeters: 1000, name: 'อุทยานแห่งชาติเอราวัณ' },
   SHEETS: {
     Users:             ['ID', 'Username', 'Password', 'Name', 'Role', 'Status'],
-    AttendanceLog:     ['LogID', 'Date', 'Name', 'Time_In', 'Time_Out', 'Task_Report', 'Photo_URL', 'Status', 'Latitude', 'Longitude', 'Distance_m'],
+    AttendanceLog:     ['LogID', 'Date', 'Name', 'Time_In', 'Time_Out', 'Task_Report', 'Photo_URL', 'Status', 'Latitude', 'Longitude', 'Distance_m', 'Selfie_URL'],
     WorkCycles:        ['CycleID', 'UserID', 'Name', 'Start_Date', 'End_Date', 'Required_Work_Days', 'Status'],
     WorkPlans:         ['PlanID', 'Submission_ID', 'CycleID', 'UserID', 'Name', 'Plan_Date', 'Plan_Status', 'Notes', 'Completed_LogID', 'Created_At', 'Submitted_At', 'Approved_At'],
     ScheduleRequests:  ['ReqID', 'CycleID', 'UserID', 'Name', 'Original_Date', 'Requested_Date', 'Reason', 'Status', 'Created_At', 'Decision_At']
@@ -241,7 +242,7 @@ function getAdminAppData(token) {
 
   // รายชื่อผู้มาปฏิบัติงานวันนี้
   var todayAttendanceList = todayLogs.map(function(l) {
-    return { name: l.Name, timeIn: l.Time_In, status: l.Status, distance: l.Distance_m || '-' };
+    return { name: l.Name, timeIn: l.Time_In, status: l.Status, distance: l.Distance_m || '-', selfieUrl: l.Selfie_URL || '' };
   });
 
   return {
@@ -413,7 +414,7 @@ function updateScheduleRequestStatus(token, reqId, newStatus) {
 }
 
 // ==================== CHECK IN / CHECK OUT ====================
-function checkIn(token, latitude, longitude) {
+function checkIn(token, latitude, longitude, selfieData) {
   var user = validateSession_(token);
   var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   var now = new Date();
@@ -429,6 +430,11 @@ function checkIn(token, latitude, longitude) {
     return { success: false, message: 'ระบบเปิดให้ลงเวลาเข้างานตั้งแต่ 08:05 น. กรุณารออีก ' + waitMin + ' นาที' };
   }
 
+  // ตรวจสอบรูปเซลฟี่
+  if (!selfieData || !selfieData.data) {
+    return { success: false, message: 'กรุณาถ่ายรูปเซลฟี่เพื่อยืนยันตัวตนก่อนลงเวลา' };
+  }
+
   // ตรวจสอบพิกัด GPS
   if (!latitude || !longitude) {
     return { success: false, message: 'ไม่สามารถระบุตำแหน่งของคุณได้ กรุณาเปิด GPS แล้วลองอีกครั้ง' };
@@ -436,7 +442,7 @@ function checkIn(token, latitude, longitude) {
   var loc = CONFIG.CHECKIN_LOCATION;
   var distance = calculateDistance_(latitude, longitude, loc.lat, loc.lng);
   var distanceRounded = Math.round(distance);
-  if (distance > loc.radiusMeters) {
+  if (distance > loc.radiusMeters && !CONFIG.DEV_MODE) {
     return { success: false, message: 'คุณอยู่ห่างจากจุดลงเวลา (' + loc.name + ') ประมาณ ' + (distanceRounded >= 1000 ? (distanceRounded / 1000).toFixed(1) + ' กม.' : distanceRounded + ' เมตร') + '\nต้องอยู่ในรัศมีไม่เกิน ' + (loc.radiusMeters >= 1000 ? (loc.radiusMeters / 1000) + ' กม.' : loc.radiusMeters + ' เมตร') };
   }
 
@@ -460,10 +466,18 @@ function checkIn(token, latitude, longitude) {
   var isLate = totalMinutes > 495;
   var lateStatus = isLate ? 'Late' : 'On_Time';
 
+  // อัปโหลดรูปเซลฟี่ไป Google Drive
+  var selfieUrl = '';
+  try {
+    selfieUrl = uploadSelfie_(user.name, today, selfieData);
+  } catch (e) {
+    return { success: false, message: 'ไม่สามารถอัปโหลดรูปเซลฟี่ได้: ' + e.message };
+  }
+
   var logId = 'LOG' + now.getTime();
   var timeInDisplay = today + ' ' + currentTime;
   var sheet = ss.getSheetByName('AttendanceLog');
-  sheet.appendRow([logId, today, user.name, timeInDisplay, '', '', '', lateStatus, latitude, longitude, distanceRounded]);
+  sheet.appendRow([logId, today, user.name, timeInDisplay, '', '', '', lateStatus, latitude, longitude, distanceRounded, selfieUrl]);
 
   // อัพเดท Completed_LogID ใน WorkPlans
   updatePlanCompletedLog_(ss, user.id, today, logId);
@@ -537,6 +551,24 @@ function checkOut(token, taskReport, photoDataArray) {
 }
 
 // ==================== PHOTO MANAGEMENT ====================
+function uploadSelfie_(userName, dateStr, selfieData) {
+  var rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+  var monthStr = dateStr.substring(0, 7);
+  var monthFolder = getOrCreateFolder_(rootFolder, monthStr);
+  var dateFolder = getOrCreateFolder_(monthFolder, dateStr);
+  var userFolder = getOrCreateFolder_(dateFolder, userName);
+
+  var fileName = 'selfie_' + userName + '_' + dateStr + '.jpg';
+  var blob = decodeBase64ToBlob_(selfieData.data, selfieData.mimeType || 'image/jpeg', fileName);
+  var file = userFolder.createFile(blob);
+
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (e) {}
+
+  return 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w400';
+}
+
 function uploadPhotos_(userName, dateStr, photoDataArray) {
   var rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
 

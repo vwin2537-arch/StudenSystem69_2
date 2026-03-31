@@ -9,7 +9,7 @@
  2. ส่วนโครงสร้างฐานข้อมูล (Database & Storage) กำหนดให้ใช้ Google Sheet ID: https://docs.google.com/spreadsheets/d/1yRrEV40jMMQCzycruoj8lIM0NPXTRhxXxUfvsaTO2uM/edit?usp=sharing และ Google Drive Folder ID: https://drive.google.com/drive/folders/1kch--KBTd15dXHVIKutMAFy7Hj5ARtBo?usp=sharing โดยให้ระบบสร้างชีต (Tab) อัตโนมัติหากยังไม่มี และตรวจสอบว่าคอลัมน์ครบเสมอ ดังนี้:
  ชีต "Users": ID, Username, Password, Name, Role, Status
  หมายเหตุ: คอลัมน์ `Status` ใช้จัดการสถานะผู้ใช้ โดยมี 3 ค่า: `Unregistered` (Admin สร้างให้แล้วแต่ยังไม่ตั้งรหัสผ่าน), `Pending` (ลงทะเบียนแล้วรออนุมัติ), `Active` (อนุมัติแล้ว เข้าใช้งานได้)
- ชีต "AttendanceLog": LogID, Date, Name, Time_In, Time_Out, Task_Report, Photo_URL, Status, Latitude, Longitude, Distance_m
+ ชีต "AttendanceLog": LogID, Date, Name, Time_In, Time_Out, Task_Report, Photo_URL, Status, Latitude, Longitude, Distance_m, Selfie_URL
  ชีต "WorkCycles": CycleID, UserID, Name, Start_Date, End_Date, Required_Work_Days, Status
  ชีต "WorkPlans": PlanID, Submission_ID, CycleID, UserID, Name, Plan_Date, Plan_Status, Notes, Completed_LogID, Created_At, Submitted_At, Approved_At
  ชีต "ScheduleRequests": ReqID, CycleID, UserID, Name, Original_Date, Requested_Date, Reason, Status, Created_At, Decision_At
@@ -48,7 +48,8 @@
  createWorkPlan() สำหรับบันทึกแผนวันทำงานหลายวันในครั้งเดียว และผูกเป็นชุดด้วย Submission_ID
  updateWorkPlanApprovalStatus() สำหรับอนุมัติหรือไม่อนุมัติแผนวันทำงานทั้งชุด
  createScheduleChangeRequest() และ updateScheduleRequestStatus() สำหรับสร้างและจัดการคำร้องขอสลับวันปฏิบัติงาน
- checkIn(token, latitude, longitude) สำหรับบันทึกเวลาเข้างาน โดยต้องตรวจสอบพิกัด GPS ว่าอยู่ในรัศมีที่กำหนด และตรวจสอบว่าเป็นวันที่อยู่ในแผนที่อนุมัติแล้ว บันทึกพิกัดลง AttendanceLog
+ checkIn(token, latitude, longitude, selfieData) สำหรับบันทึกเวลาเข้างาน โดยต้องตรวจสอบพิกัด GPS ว่าอยู่ในรัศมีที่กำหนด ตรวจสอบว่าเป็นวันที่อยู่ในแผนที่อนุมัติแล้ว บังคับถ่ายเซลฟี่ยืนยันตัวตน อัปโหลดเซลฟี่ไป Google Drive และบันทึกพิกัด+ลิงก์เซลฟี่ลง AttendanceLog
+ uploadSelfie_(userName, dateStr, selfieData) — อัปโหลดรูปเซลฟี่เช็คอินไป Google Drive และคืน thumbnail URL สำหรับแสดงผลใน Dashboard
  checkOut() สำหรับบันทึกเวลาออกงาน รายงานผล และรูปภาพแนบ พร้อมเชื่อมโยงกับบันทึกการเข้างานของวันนั้น
  ฟังก์ชันรับไฟล์รูปภาพแบบ Base64 ถอดรหัสและบันทึกลง Google Drive อัตโนมัติ พร้อมตั้งค่าการแชร์ไฟล์เป็นสาธารณะ ("Anyone with the link can view") และคืนค่า URL กลับมาบันทึกลง Sheet
  calculateDistance_(lat1, lng1, lat2, lng2) — คำนวณระยะทางระหว่าง 2 พิกัดด้วยสูตร Haversine (หน่วยเมตร)

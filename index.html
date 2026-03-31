@@ -640,15 +640,49 @@ function renderCheckIn(area) {
 
 function doCheckIn() {
   Swal.fire({
-    title: 'ยืนยันลงเวลาเข้างาน?',
-    html: 'วันที่ ' + formatThaiDate(APP.data.today) + '<br><small class="text-gray-500">📍 ระบบจะตรวจสอบตำแหน่งของคุณ</small>',
-    icon: 'question',
+    title: '📸 ถ่ายเซลฟี่ยืนยันตัวตน',
+    html: '<p class="text-sm text-gray-600 mb-3">วันที่ ' + formatThaiDate(APP.data.today) + '</p>' +
+      '<p class="text-xs text-gray-500 mb-3">กรุณาถ่ายรูปเซลฟี่เพื่อยืนยันตัวตนก่อนลงเวลา</p>' +
+      '<div id="selfiePreviewBox" class="mb-3 hidden"><img id="selfiePreview" class="mx-auto rounded-xl shadow" style="max-height:200px;"></div>' +
+      '<label class="inline-flex items-center gap-2 cursor-pointer bg-forest-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-forest-600 transition">' +
+      '<span>📷 ถ่ายเซลฟี่</span>' +
+      '<input type="file" accept="image/*" capture="user" id="selfieInput" class="hidden">' +
+      '</label>',
     showCancelButton: true,
     confirmButtonColor: '#3d8b41',
-    confirmButtonText: 'ยืนยัน',
-    cancelButtonText: 'ยกเลิก'
+    confirmButtonText: 'ยืนยันลงเวลา',
+    cancelButtonText: 'ยกเลิก',
+    didOpen: function() {
+      var btn = Swal.getConfirmButton();
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+      document.getElementById('selfieInput').addEventListener('change', function(e) {
+        var file = e.target.files[0];
+        if (file) {
+          var reader = new FileReader();
+          reader.onload = function(ev) {
+            var preview = document.getElementById('selfiePreview');
+            var box = document.getElementById('selfiePreviewBox');
+            preview.src = ev.target.result;
+            box.classList.remove('hidden');
+            btn.disabled = false;
+            btn.style.opacity = '1';
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    },
+    preConfirm: function() {
+      var fileInput = document.getElementById('selfieInput');
+      if (!fileInput.files || !fileInput.files[0]) {
+        Swal.showValidationMessage('กรุณาถ่ายรูปเซลฟี่ก่อน');
+        return false;
+      }
+      return processPhotos([fileInput.files[0]]).then(function(photos) { return photos[0]; });
+    }
   }).then(function(result) {
-    if (result.isConfirmed) {
+    if (result.isConfirmed && result.value) {
+      var selfieData = result.value;
       Swal.fire({ title: '📍 กำลังระบุตำแหน่ง...', text: 'กรุณารอสักครู่', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
       if (!navigator.geolocation) {
         Swal.fire('ไม่รองรับ', 'เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง', 'error');
@@ -658,17 +692,17 @@ function doCheckIn() {
         function(pos) {
           var lat = pos.coords.latitude;
           var lng = pos.coords.longitude;
-          Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+          Swal.fire({ title: '⏳ กำลังบันทึกข้อมูล...', html: 'อัปโหลดเซลฟี่ + ตรวจสอบตำแหน่ง', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
           google.script.run.withSuccessHandler(function(res) {
             if (res.success) {
               var lateMsg = res.lateStatus === 'Late' ? '\n⚠️ สถานะ: มาสาย' : '\n✅ สถานะ: ตรงเวลา';
               var distMsg = '\n📍 ระยะห่าง: ' + (res.distance >= 1000 ? (res.distance / 1000).toFixed(1) + ' กม.' : res.distance + ' เมตร');
-              Swal.fire('สำเร็จ!', 'ลงเวลาเข้างานเรียบร้อย\nเวลา: ' + res.timeIn + lateMsg + distMsg, res.lateStatus === 'Late' ? 'warning' : 'success');
+              Swal.fire('สำเร็จ!', 'ลงเวลาเข้างานเรียบร้อย\nเวลา: ' + res.timeIn + lateMsg + distMsg + '\n📸 บันทึกเซลฟี่เรียบร้อย', res.lateStatus === 'Late' ? 'warning' : 'success');
               loadUserData();
             } else {
               Swal.fire('ไม่สำเร็จ', res.message, 'error');
             }
-          }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).checkIn(APP.token, lat, lng);
+          }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).checkIn(APP.token, lat, lng, selfieData);
         },
         function(err) {
           var msgs = {
@@ -1216,6 +1250,7 @@ function renderDashboard(area) {
   if (attendList.length > 0) {
     html += '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr>';
     html += '<th class="text-left p-2 bg-forest-600 text-white rounded-tl-lg">#</th>';
+    html += '<th class="text-left p-2 bg-forest-600 text-white">เซลฟี่</th>';
     html += '<th class="text-left p-2 bg-forest-600 text-white">ชื่อ</th>';
     html += '<th class="text-left p-2 bg-forest-600 text-white">เวลาเข้า</th>';
     html += '<th class="text-left p-2 bg-forest-600 text-white">ระยะห่าง</th>';
@@ -1227,8 +1262,12 @@ function renderDashboard(area) {
         : '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">ตรงเวลา</span>';
       var distText = a.distance !== '-' ? a.distance + ' ม.' : '-';
       var timeOnly = a.timeIn ? a.timeIn.split(' ').pop() : '-';
+      var selfieCell = a.selfieUrl
+        ? '<a href="' + a.selfieUrl + '" target="_blank"><img src="' + a.selfieUrl + '" class="w-10 h-10 rounded-full object-cover border-2 border-forest-200" onerror="this.outerHTML=\'📷\'"></a>'
+        : '<span class="text-gray-300">—</span>';
       html += '<tr class="border-b border-gray-100">';
       html += '<td class="p-2 text-gray-400">' + (idx + 1) + '</td>';
+      html += '<td class="p-2">' + selfieCell + '</td>';
       html += '<td class="p-2 font-medium">' + a.name + '</td>';
       html += '<td class="p-2 text-gray-600">' + timeOnly + '</td>';
       html += '<td class="p-2 text-gray-500">' + distText + '</td>';
