@@ -390,7 +390,20 @@ function checkIn(token) {
 function checkOut(token, taskReport, photoDataArray) {
   var user = validateSession_(token);
   var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  var today = formatDate_(new Date());
+  var now = new Date();
+  var today = formatDate_(now);
+  var currentHour = parseInt(Utilities.formatDate(now, Session.getScriptTimeZone(), 'HH'));
+  var currentMinute = parseInt(Utilities.formatDate(now, Session.getScriptTimeZone(), 'mm'));
+  var totalMinutes = currentHour * 60 + currentMinute;
+
+  // ตรวจสอบเวลาเปิดให้รายงานผล (16:00 น. เป็นต้นไป)
+  if (totalMinutes < 960) {
+    var waitHr = Math.floor((960 - totalMinutes) / 60);
+    var waitMn = (960 - totalMinutes) % 60;
+    var waitMsg = waitHr > 0 ? waitHr + ' ชั่วโมง ' : '';
+    waitMsg += waitMn > 0 ? waitMn + ' นาที' : '';
+    return { success: false, message: 'ระบบเปิดให้รายงานผลตั้งแต่ 16:00 น. กรุณารออีก ' + waitMsg };
+  }
 
   // หาบันทึกเช็คอินวันนี้
   var sheet = ss.getSheetByName('AttendanceLog');
@@ -425,12 +438,18 @@ function checkOut(token, taskReport, photoDataArray) {
 
   var nowOut = new Date();
   var timeOut = formatDate_(nowOut) + ' ' + formatTime_(nowOut);
+  var outHour = parseInt(Utilities.formatDate(nowOut, Session.getScriptTimeZone(), 'HH'));
+  var outMinute = parseInt(Utilities.formatDate(nowOut, Session.getScriptTimeZone(), 'mm'));
+  var outTotalMin = outHour * 60 + outMinute;
+  var isLateReport = outTotalMin > 1020;
+  var finalStatus = isLateReport ? 'Late_Report' : 'Completed';
+
   sheet.getRange(logRow, timeOutIdx + 1).setValue(timeOut);
   sheet.getRange(logRow, taskIdx + 1).setValue(taskReport);
   sheet.getRange(logRow, photoIdx + 1).setValue(folderUrl);
-  sheet.getRange(logRow, statusIdx + 1).setValue('Completed');
+  sheet.getRange(logRow, statusIdx + 1).setValue(finalStatus);
 
-  return { success: true, timeOut: timeOut, photoUrl: folderUrl };
+  return { success: true, timeOut: timeOut, photoUrl: folderUrl, reportStatus: finalStatus };
 }
 
 // ==================== PHOTO MANAGEMENT ====================
