@@ -414,17 +414,25 @@ function renderCheckIn(area) {
   html += '</div>';
 
   if (d.todayLog && d.todayLog.Time_Out) {
+    var logStatus1 = d.todayLog.Status;
+    var statusBadge1 = logStatus1 === 'Late' ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">มาสาย</span>' : '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">ตรงเวลา</span>';
     html += '<div class="bg-green-50 border border-green-300 rounded-xl p-4 text-center">';
-    html += '<p class="text-green-700 font-semibold text-lg">✅ ปฏิบัติงานเสร็จสิ้นแล้ววันนี้</p>';
+    html += '<p class="text-green-700 font-semibold text-lg">✅ ปฏิบัติงานเสร็จสิ้นแล้ววันนี้ ' + statusBadge1 + '</p>';
     html += '<p class="text-green-600 mt-1">เข้า: ' + d.todayLog.Time_In + ' | ออก: ' + d.todayLog.Time_Out + '</p>';
     html += '</div>';
   } else if (d.todayLog && d.todayLog.Time_In) {
+    var logStatus2 = d.todayLog.Status;
+    var statusBadge2 = logStatus2 === 'Late' ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">มาสาย</span>' : '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">ตรงเวลา</span>';
     html += '<div class="bg-blue-50 border border-blue-300 rounded-xl p-4 text-center">';
-    html += '<p class="text-blue-700 font-semibold text-lg">📌 ลงเวลาเข้างานแล้ว</p>';
+    html += '<p class="text-blue-700 font-semibold text-lg">📌 ลงเวลาเข้างานแล้ว ' + statusBadge2 + '</p>';
     html += '<p class="text-blue-600 mt-1">เวลาเข้า: ' + d.todayLog.Time_In + '</p>';
     html += '<p class="text-blue-500 text-sm mt-2">กรุณาไปที่แท็บ "รายงานผล" เพื่อลงเวลาออก</p>';
     html += '</div>';
   } else if (d.canCheckIn) {
+    html += '<div class="bg-blue-50 rounded-xl p-3 mb-4 text-sm text-blue-700">';
+    html += '<p>เวลาปัจจุบัน: <strong>' + (d.currentTime || '') + ' น.</strong></p>';
+    html += '<p class="mt-1">🟢 เปิดลงชื่อได้ตั้งแต่ <strong>08:05 น.</strong> &nbsp;|  ✅ ไม่สายถ้าลงก่อน <strong>08:15 น.</strong> &nbsp;|  🟡 หลัง 08:15 น. ถือว่า <strong>มาสาย</strong></p>';
+    html += '</div>';
     html += '<div class="text-center">';
     html += '<button onclick="doCheckIn()" class="btn-primary text-lg px-8 py-4 text-center">ลงเวลาเข้างาน</button>';
     html += '</div>';
@@ -448,9 +456,16 @@ function renderCheckIn(area) {
     var recent = d.logs.slice(-5).reverse();
     html += '<div class="space-y-2">';
     recent.forEach(function(log) {
-      var statusBadge = log.Status === 'Completed'
-        ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">เสร็จสิ้น</span>'
-        : '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">เข้างานแล้ว</span>';
+      var statusBadge;
+      if (log.Status === 'Completed') {
+        statusBadge = '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">เสร็จสิ้น</span>';
+      } else if (log.Status === 'Late') {
+        statusBadge = '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">มาสาย</span>';
+      } else if (log.Status === 'On_Time') {
+        statusBadge = '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">ตรงเวลา</span>';
+      } else {
+        statusBadge = '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">เข้างานแล้ว</span>';
+      }
       html += '<div class="flex justify-between items-center bg-gray-50 rounded-lg p-3">';
       html += '<div><span class="font-medium text-sm">' + log.Date + '</span> ' + statusBadge + '</div>';
       html += '<div class="text-sm text-gray-600">' + (log.Time_In || '-') + ' - ' + (log.Time_Out || '...') + '</div>';
@@ -478,7 +493,8 @@ function doCheckIn() {
       Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
       google.script.run.withSuccessHandler(function(res) {
         if (res.success) {
-          Swal.fire('สำเร็จ!', 'ลงเวลาเข้างานเรียบร้อย เวลา ' + res.timeIn, 'success');
+          var lateMsg = res.lateStatus === 'Late' ? '\n⚠️ สถานะ: มาสาย' : '\n✅ สถานะ: ตรงเวลา';
+          Swal.fire('สำเร็จ!', 'ลงเวลาเข้างานเรียบร้อย\nเวลา: ' + res.timeIn + lateMsg, res.lateStatus === 'Late' ? 'warning' : 'success');
           loadUserData();
         } else {
           Swal.fire('ไม่สำเร็จ', res.message, 'error');
@@ -655,13 +671,12 @@ function renderWorkPlan(area) {
 }
 
 function renderCalendar(startDate, endDate, approvedDates, pendingDates) {
-  var start = new Date(startDate);
-  var end = new Date(endDate);
-  var today = new Date(APP.data.today);
+  var startParts = startDate.split('-');
+  var endParts = endDate.split('-');
   var html = '<div class="space-y-4">';
 
-  var current = new Date(start.getFullYear(), start.getMonth(), 1);
-  var endMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0);
+  var current = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, 1);
+  var endMonth = new Date(parseInt(endParts[0]), parseInt(endParts[1]), 0);
 
   while (current <= endMonth) {
     var year = current.getFullYear();
@@ -678,7 +693,7 @@ function renderCalendar(startDate, endDate, approvedDates, pendingDates) {
     for (var d = 1; d <= daysInMonth; d++) {
       var date = new Date(year, month, d);
       var dateStr = formatDateLocal(date);
-      var isInRange = date >= start && date <= end;
+      var isInRange = dateStr >= startDate && dateStr <= endDate;
       var isApproved = approvedDates.indexOf(dateStr) !== -1;
       var isPending = pendingDates.indexOf(dateStr) !== -1;
       var isToday = dateStr === APP.data.today;

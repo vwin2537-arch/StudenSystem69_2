@@ -147,6 +147,7 @@ function getUserAppData(token) {
     todayLog: todayLog,
     requests: myRequests,
     today: today,
+    currentTime: formatTime_(new Date()),
     canCheckIn: approvedDates.indexOf(today) !== -1 && !todayLog,
     canCheckOut: todayLog && todayLog.Time_In && !todayLog.Time_Out
   };
@@ -342,7 +343,18 @@ function updateScheduleRequestStatus(token, reqId, newStatus) {
 function checkIn(token) {
   var user = validateSession_(token);
   var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  var today = formatDate_(new Date());
+  var now = new Date();
+  var today = formatDate_(now);
+  var currentTime = formatTime_(now);
+  var currentHour = parseInt(Utilities.formatDate(now, Session.getScriptTimeZone(), 'HH'));
+  var currentMinute = parseInt(Utilities.formatDate(now, Session.getScriptTimeZone(), 'mm'));
+  var totalMinutes = currentHour * 60 + currentMinute;
+
+  // ตรวจสอบเวลาเปิดให้ลงชื่อ (08:05 น. เป็นต้นไป)
+  if (totalMinutes < 485) {
+    var waitMin = 485 - totalMinutes;
+    return { success: false, message: 'ระบบเปิดให้ลงเวลาเข้างานตั้งแต่ 08:05 น. กรุณารออีก ' + waitMin + ' นาที' };
+  }
 
   // ตรวจสอบว่าเป็นวันที่อยู่ในแผนที่อนุมัติแล้ว
   var plans = getSheetData_(ss, 'WorkPlans');
@@ -360,15 +372,19 @@ function checkIn(token) {
     return { success: false, message: 'คุณลงเวลาเข้างานวันนี้แล้ว' };
   }
 
-  var logId = 'LOG' + new Date().getTime();
-  var timeIn = formatTime_(new Date());
+  // ตรวจสอบสถานะสาย (หลัง 08:15 น. = สาย)
+  var isLate = totalMinutes > 495;
+  var lateStatus = isLate ? 'Late' : 'On_Time';
+
+  var logId = 'LOG' + now.getTime();
+  var timeInDisplay = today + ' ' + currentTime;
   var sheet = ss.getSheetByName('AttendanceLog');
-  sheet.appendRow([logId, today, user.name, timeIn, '', '', '', 'Checked_In']);
+  sheet.appendRow([logId, today, user.name, timeInDisplay, '', '', '', lateStatus]);
 
   // อัพเดท Completed_LogID ใน WorkPlans
   updatePlanCompletedLog_(ss, user.id, today, logId);
 
-  return { success: true, logId: logId, timeIn: timeIn };
+  return { success: true, logId: logId, timeIn: timeInDisplay, lateStatus: lateStatus };
 }
 
 function checkOut(token, taskReport, photoDataArray) {
@@ -389,7 +405,9 @@ function checkOut(token, taskReport, photoDataArray) {
   var logRow = -1;
 
   for (var i = 1; i < data.length; i++) {
-    if (data[i][nameIdx] === user.name && data[i][dateIdx] === today && !data[i][timeOutIdx]) {
+    var cellDate = data[i][dateIdx];
+    var cellDateStr = (cellDate instanceof Date) ? formatDate_(cellDate) : String(cellDate);
+    if (data[i][nameIdx] === user.name && cellDateStr === today && !data[i][timeOutIdx]) {
       logRow = i + 1;
       break;
     }
@@ -405,7 +423,8 @@ function checkOut(token, taskReport, photoDataArray) {
     folderUrl = uploadPhotos_(user.name, today, photoDataArray);
   }
 
-  var timeOut = formatTime_(new Date());
+  var nowOut = new Date();
+  var timeOut = formatDate_(nowOut) + ' ' + formatTime_(nowOut);
   sheet.getRange(logRow, timeOutIdx + 1).setValue(timeOut);
   sheet.getRange(logRow, taskIdx + 1).setValue(taskReport);
   sheet.getRange(logRow, photoIdx + 1).setValue(folderUrl);
@@ -458,13 +477,18 @@ function getSheetData_(ss, sheetName) {
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
   var headers = data[0];
+  var timeColumns = ['Time_In', 'Time_Out'];
   var result = [];
   for (var i = 1; i < data.length; i++) {
     var obj = {};
     for (var j = 0; j < headers.length; j++) {
       var val = data[i][j];
       if (val instanceof Date) {
-        obj[headers[j]] = formatDate_(val);
+        if (val.getFullYear() < 1910 || timeColumns.indexOf(headers[j]) !== -1) {
+          obj[headers[j]] = formatTime_(val);
+        } else {
+          obj[headers[j]] = formatDate_(val);
+        }
       } else {
         obj[headers[j]] = val;
       }
