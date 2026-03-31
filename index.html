@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบรายงานการปฏิบัติงาน อุทยานแห่งชาติเอราวัณ</title>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { kanit: ['Kanit', 'sans-serif'] },
+          colors: {
+            forest: { 50:'#f0f7f0', 100:'#dceedd', 200:'#b8ddb9', 300:'#88c48b', 400:'#5ba85f', 500:'#3d8b41', 600:'#2d6f31', 700:'#255929', 800:'#204723', 900:'#1a3b1e' },
+            earth: { 50:'#faf6f1', 100:'#f0e6d6', 200:'#e0ccad', 300:'#cdac7d', 400:'#bb8f56', 500:'#a87a3f', 600:'#8d6333', 700:'#744e2d', 800:'#5f4029', 900:'#503624' }
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+  <style>
+    * { font-family: 'Kanit', sans-serif; }
+    body { background: #f0f7f0; }
+    .tab-active { background-color: #3d8b41; color: white; }
+    .tab-inactive { background-color: #e0ccad; color: #504020; }
+    .tab-inactive:hover { background-color: #cdac7d; }
+    .card { background: white; border-radius: 1rem; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 1.5rem; }
+    .btn-primary { background: linear-gradient(135deg, #3d8b41, #2d6f31); color: white; padding: 0.625rem 1.5rem; border-radius: 0.75rem; font-weight: 500; transition: all 0.2s; }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(61,139,65,0.35); }
+    .btn-danger { background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; padding: 0.625rem 1.5rem; border-radius: 0.75rem; font-weight: 500; transition: all 0.2s; }
+    .btn-danger:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(220,38,38,0.35); }
+    .btn-secondary { background: linear-gradient(135deg, #a87a3f, #8d6333); color: white; padding: 0.625rem 1.5rem; border-radius: 0.75rem; font-weight: 500; transition: all 0.2s; }
+    .btn-secondary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(168,122,63,0.35); }
+    .btn-sm { padding: 0.375rem 1rem; font-size: 0.875rem; border-radius: 0.5rem; }
+    .input-field { border: 2px solid #b8ddb9; border-radius: 0.75rem; padding: 0.625rem 1rem; width: 100%; transition: border-color 0.2s; }
+    .input-field:focus { outline: none; border-color: #3d8b41; box-shadow: 0 0 0 3px rgba(61,139,65,0.15); }
+    .stat-card { background: white; border-radius: 1rem; padding: 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 4px solid #3d8b41; }
+    .calendar-day { width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; transition: all 0.15s; }
+    .calendar-day:hover { background: #dceedd; }
+    .calendar-day.selected { background: #3d8b41; color: white; }
+    .calendar-day.approved { background: #22c55e; color: white; }
+    .calendar-day.pending { background: #f59e0b; color: white; }
+    .calendar-day.disabled { opacity: 0.3; cursor: not-allowed; }
+    .calendar-day.today { border: 2px solid #3d8b41; font-weight: 700; }
+    .calendar-day.holiday { background: #fecaca; color: #991b1b; border: 1.5px dashed #ef4444; }
+    .calendar-day.holiday.selected { background: #3d8b41; color: white; border-style: solid; }
+    .calendar-day.holiday.disabled { background: #fee2e2; }
+    .holiday-tooltip { position: relative; }
+    .holiday-tooltip::after { content: attr(data-holiday); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #1f2937; color: white; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 10; }
+    .holiday-tooltip:hover::after { opacity: 1; }
+    table.dataTable { border-collapse: collapse !important; }
+    table.dataTable thead th { background: #2d6f31; color: white; font-weight: 500; }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.current { background: #3d8b41 !important; color: white !important; border: none !important; border-radius: 0.5rem; }
+    .hamburger-line { width: 24px; height: 3px; background: white; border-radius: 2px; transition: all 0.3s; }
+    .mobile-menu { transition: max-height 0.3s ease, opacity 0.3s ease; }
+    .photo-preview { width: 80px; height: 80px; object-fit: cover; border-radius: 0.5rem; border: 2px solid #b8ddb9; }
+    @media (max-width: 640px) {
+      .card { padding: 1rem; border-radius: 0.75rem; }
+      .stat-card { padding: 1rem; }
+    }
+    .loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.85); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+    .spinner { width: 48px; height: 48px; border: 4px solid #b8ddb9; border-top-color: #3d8b41; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="loading-overlay" style="display:none;">
+    <div class="text-center">
+      <div class="spinner mx-auto mb-4"></div>
+      <p class="text-forest-700 font-medium" id="loadingText">กำลังโหลด...</p>
+    </div>
+  </div>
+
+  <!-- ==================== LOGIN PAGE ==================== -->
+  <div id="loginPage" class="flex-1 flex items-center justify-center p-4">
+    <div class="card w-full max-w-md">
+      <div class="text-center mb-6">
+        <div class="w-20 h-20 bg-forest-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg class="w-10 h-10 text-forest-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+        </div>
+        <h1 class="text-2xl font-bold text-forest-800">ระบบรายงานการปฏิบัติงาน</h1>
+        <p class="text-earth-600 mt-1">อุทยานแห่งชาติเอราวัณ</p>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-forest-700 mb-1">ชื่อผู้ใช้</label>
+          <input type="text" id="loginUsername" class="input-field" placeholder="กรอกชื่อผู้ใช้">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-forest-700 mb-1">รหัสผ่าน</label>
+          <input type="password" id="loginPassword" class="input-field" placeholder="กรอกรหัสผ่าน" onkeydown="if(event.key==='Enter')doLogin()">
+        </div>
+        <button onclick="doLogin()" class="btn-primary w-full text-center text-lg py-3">เข้าสู่ระบบ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MAIN APP ==================== -->
+  <div id="mainApp" style="display:none;" class="flex flex-col min-h-screen">
+
+    <!-- NAVBAR -->
+    <nav class="bg-gradient-to-r from-forest-700 to-forest-600 text-white shadow-lg sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-4">
+        <div class="flex items-center justify-between h-14">
+          <div class="flex items-center gap-2">
+            <svg class="w-7 h-7 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+            <span class="font-semibold text-sm sm:text-base truncate">อช.เอราวัณ</span>
+          </div>
+          <div class="hidden sm:flex items-center gap-4">
+            <span id="navUserName" class="text-sm text-green-200"></span>
+            <button onclick="doLogout()" class="bg-red-500/80 hover:bg-red-600 px-3 py-1.5 rounded-lg text-sm transition">ออกจากระบบ</button>
+          </div>
+          <button id="hamburgerBtn" class="sm:hidden flex flex-col gap-1.5 p-2" onclick="toggleMobileMenu()">
+            <div class="hamburger-line"></div>
+            <div class="hamburger-line"></div>
+            <div class="hamburger-line"></div>
+          </button>
+        </div>
+      </div>
+      <!-- Mobile Menu -->
+      <div id="mobileMenu" class="mobile-menu sm:hidden overflow-hidden max-h-0 opacity-0 bg-forest-800">
+        <div class="px-4 py-3 space-y-2">
+          <p id="mobileUserName" class="text-green-200 text-sm pb-2 border-b border-forest-600"></p>
+          <div id="mobileMenuItems" class="space-y-1"></div>
+          <button onclick="doLogout()" class="w-full text-left text-red-300 hover:text-red-200 py-2 text-sm">ออกจากระบบ</button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- TAB NAV (Desktop) -->
+    <div class="bg-white shadow-sm border-b border-forest-100">
+      <div class="max-w-7xl mx-auto px-4">
+        <div id="tabNav" class="flex gap-1 py-2 overflow-x-auto hide-scrollbar"></div>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-4 sm:py-6">
+      <div id="errorBanner" style="display:none;" class="bg-red-50 border border-red-300 text-red-700 p-4 rounded-xl mb-4">
+        <p class="font-medium">เกิดข้อผิดพลาด</p>
+        <p id="errorMessage" class="text-sm mt-1"></p>
+      </div>
+      <div id="contentArea"></div>
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-forest-800 text-green-200 text-center py-4 text-xs sm:text-sm mt-auto">
+      Copyright © 2026 ระบบรายงานการปฏิบัติงาน อุทยานแห่งชาติเอราวัณ
+    </footer>
+  </div>
+
+  <!-- ==================== PHOTO MODAL ==================== -->
+  <div id="photoModal" style="display:none;" class="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4" onclick="closePhotoModal(event)">
+    <div class="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-auto p-4" onclick="event.stopPropagation()">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-semibold text-forest-800">รูปถ่ายการปฏิบัติงาน</h3>
+        <button onclick="document.getElementById('photoModal').style.display='none'" class="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
+      </div>
+      <div id="photoModalContent" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+    </div>
+  </div>
+
+<script>
+// ==================== THAI HOLIDAYS ====================
+var THAI_HOLIDAYS = {
+  '01-01': 'วันขึ้นปีใหม่',
+  '02-10': 'วันมาฆบูชา',
+  '04-06': 'วันจักรี',
+  '04-13': 'วันสงกรานต์',
+  '04-14': 'วันสงกรานต์',
+  '04-15': 'วันสงกรานต์',
+  '05-01': 'วันแรงงาน',
+  '05-04': 'วันฉัตรมงคล',
+  '05-12': 'วันวิสาขบูชา',
+  '06-03': 'วันเฉลิมพระชนมพรรษา ร.10',
+  '07-10': 'วันอาสาฬหบูชา',
+  '07-11': 'วันเข้าพรรษา',
+  '07-28': 'วันเฉลิมพระชนมพรรษา ร.10',
+  '08-12': 'วันเฉลิมพระชนมพรรษา พระราชินี / วันแม่',
+  '10-13': 'วันคล้ายวันสวรรคต ร.9',
+  '10-23': 'วันปิยมหาราช',
+  '12-05': 'วันคล้ายวันพระราชสมภพ ร.9 / วันพ่อ',
+  '12-10': 'วันรัฐธรรมนูญ',
+  '12-31': 'วันสิ้นปี'
+};
+
+function getThaiHoliday(dateStr) {
+  if (!dateStr) return null;
+  var md = dateStr.substring(5);
+  return THAI_HOLIDAYS[md] || null;
+}
+
+// ==================== STATE ====================
+var APP = {
+  token: null,
+  user: null,
+  data: null,
+  currentTab: '',
+  selectedPlanDates: [],
+  photoFiles: []
+};
+
+// ==================== INIT ====================
+window.onerror = function(msg, url, line) {
+  showError('Runtime Error: ' + msg);
+  return false;
+};
+
+window.addEventListener('DOMContentLoaded', function() {
+  var saved = localStorage.getItem('erawan_token');
+  if (saved) {
+    showLoading('กำลังตรวจสอบสถานะ...');
+    google.script.run.withSuccessHandler(function(user) {
+      hideLoading();
+      if (user) {
+        APP.token = saved;
+        APP.user = user;
+        enterApp();
+      } else {
+        localStorage.removeItem('erawan_token');
+      }
+    }).withFailureHandler(function() {
+      hideLoading();
+      localStorage.removeItem('erawan_token');
+    }).getSessionUser(saved);
+  }
+});
+
+// ==================== AUTH ====================
+function doLogin() {
+  var u = document.getElementById('loginUsername').value.trim();
+  var p = document.getElementById('loginPassword').value.trim();
+  if (!u || !p) { Swal.fire('แจ้งเตือน', 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน', 'warning'); return; }
+
+  Swal.fire({ title: 'กำลังเข้าสู่ระบบ...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+  google.script.run.withSuccessHandler(function(res) {
+    Swal.close();
+    if (res.success) {
+      APP.token = res.token;
+      APP.user = res.user;
+      localStorage.setItem('erawan_token', res.token);
+      enterApp();
+    } else {
+      Swal.fire('เข้าสู่ระบบไม่สำเร็จ', res.message, 'error');
+    }
+  }).withFailureHandler(function(err) {
+    Swal.close();
+    Swal.fire('ข้อผิดพลาด', err.message, 'error');
+  }).login(u, p);
+}
+
+function doLogout() {
+  google.script.run.logout(APP.token);
+  APP.token = null; APP.user = null; APP.data = null;
+  localStorage.removeItem('erawan_token');
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPassword').value = '';
+}
+
+// ==================== ENTER APP ====================
+function enterApp() {
+  try {
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'flex';
+    document.getElementById('navUserName').textContent = APP.user.name + ' (' + APP.user.role + ')';
+    document.getElementById('mobileUserName').textContent = APP.user.name + ' (' + APP.user.role + ')';
+    hideError();
+    if (APP.user.role === 'Admin') {
+      setupAdminTabs();
+      loadAdminData();
+    } else {
+      setupUserTabs();
+      loadUserData();
+    }
+  } catch (e) {
+    showError('เกิดข้อผิดพลาดในการโหลดหน้า: ' + e.message);
+  }
+}
+
+// ==================== TAB SYSTEM ====================
+function setupUserTabs() {
+  var tabs = [
+    { id: 'checkin', label: 'ลงเวลาเข้างาน', icon: '🕐' },
+    { id: 'checkout', label: 'รายงานผล', icon: '📋' },
+    { id: 'workplan', label: 'แผนวันทำงาน', icon: '📅' },
+    { id: 'schedule_req', label: 'ขอสลับวัน', icon: '🔄' }
+  ];
+  renderTabs(tabs);
+}
+
+function setupAdminTabs() {
+  var tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'cycles', label: 'จัดการรอบงาน', icon: '🔄' },
+    { id: 'approve_plans', label: 'อนุมัติแผน', icon: '✅' },
+    { id: 'approve_requests', label: 'อนุมัติคำร้อง', icon: '📝' },
+    { id: 'reports', label: 'รายงาน', icon: '📄' }
+  ];
+  renderTabs(tabs);
+}
+
+function renderTabs(tabs) {
+  var nav = document.getElementById('tabNav');
+  var mobile = document.getElementById('mobileMenuItems');
+  nav.innerHTML = '';
+  mobile.innerHTML = '';
+  tabs.forEach(function(tab, idx) {
+    // Desktop tab
+    var btn = document.createElement('button');
+    btn.className = 'px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ' + (idx === 0 ? 'tab-active' : 'tab-inactive');
+    btn.textContent = tab.icon + ' ' + tab.label;
+    btn.setAttribute('data-tab', tab.id);
+    btn.onclick = function() { switchTab(tab.id); };
+    nav.appendChild(btn);
+    // Mobile menu item
+    var mBtn = document.createElement('button');
+    mBtn.className = 'block w-full text-left py-2 px-3 rounded-lg text-sm text-white hover:bg-forest-700 transition';
+    mBtn.textContent = tab.icon + ' ' + tab.label;
+    mBtn.onclick = function() { switchTab(tab.id); toggleMobileMenu(); };
+    mobile.appendChild(mBtn);
+  });
+  switchTab(tabs[0].id);
+}
+
+function switchTab(tabId) {
+  APP.currentTab = tabId;
+  document.querySelectorAll('#tabNav button').forEach(function(btn) {
+    btn.className = btn.className.replace('tab-active', 'tab-inactive');
+    if (btn.getAttribute('data-tab') === tabId) {
+      btn.className = btn.className.replace('tab-inactive', 'tab-active');
+    }
+  });
+  renderContent();
+}
+
+function toggleMobileMenu() {
+  var menu = document.getElementById('mobileMenu');
+  if (menu.style.maxHeight && menu.style.maxHeight !== '0px') {
+    menu.style.maxHeight = '0px'; menu.style.opacity = '0';
+  } else {
+    menu.style.maxHeight = '400px'; menu.style.opacity = '1';
+  }
+}
+
+// ==================== DATA LOADING ====================
+function loadUserData(cb) {
+  showLoading('กำลังโหลดข้อมูล...');
+  google.script.run.withSuccessHandler(function(data) {
+    hideLoading();
+    APP.data = data;
+    renderContent();
+    if (cb) cb();
+  }).withFailureHandler(function(err) {
+    hideLoading();
+    showError('ไม่สามารถโหลดข้อมูลได้: ' + err.message);
+  }).getUserAppData(APP.token);
+}
+
+function loadAdminData(cb) {
+  showLoading('กำลังโหลดข้อมูล...');
+  google.script.run.withSuccessHandler(function(data) {
+    hideLoading();
+    APP.data = data;
+    renderContent();
+    if (cb) cb();
+  }).withFailureHandler(function(err) {
+    hideLoading();
+    showError('ไม่สามารถโหลดข้อมูลได้: ' + err.message);
+  }).getAdminAppData(APP.token);
+}
+
+// ==================== RENDER ROUTER ====================
+function renderContent() {
+  try {
+    var area = document.getElementById('contentArea');
+    hideError();
+    if (!APP.data) { area.innerHTML = '<div class="card text-center text-gray-500 py-8">กำลังโหลดข้อมูล...</div>'; return; }
+
+    switch (APP.currentTab) {
+      case 'checkin': renderCheckIn(area); break;
+      case 'checkout': renderCheckOut(area); break;
+      case 'workplan': renderWorkPlan(area); break;
+      case 'schedule_req': renderScheduleRequest(area); break;
+      case 'dashboard': renderDashboard(area); break;
+      case 'cycles': renderCycles(area); break;
+      case 'approve_plans': renderApprovePlans(area); break;
+      case 'approve_requests': renderApproveRequests(area); break;
+      case 'reports': renderReports(area); break;
+      default: area.innerHTML = '<div class="card">ไม่พบหน้าที่ต้องการ</div>';
+    }
+  } catch (e) {
+    showError('เกิดข้อผิดพลาดในการแสดงผล: ' + e.message);
+  }
+}
+
+// ==================== USER: CHECK IN ====================
+function renderCheckIn(area) {
+  var d = APP.data;
+  var html = '<div class="card">';
+  html += '<h2 class="text-xl font-bold text-forest-800 mb-4">🕐 ลงเวลาเข้างาน</h2>';
+  html += '<div class="bg-forest-50 rounded-xl p-4 mb-4 text-center">';
+  html += '<p class="text-sm text-forest-600">วันที่ปัจจุบัน</p>';
+  html += '<p class="text-2xl font-bold text-forest-800">' + formatThaiDate(d.today) + '</p>';
+  html += '</div>';
+
+  if (d.todayLog && d.todayLog.Time_Out) {
+    html += '<div class="bg-green-50 border border-green-300 rounded-xl p-4 text-center">';
+    html += '<p class="text-green-700 font-semibold text-lg">✅ ปฏิบัติงานเสร็จสิ้นแล้ววันนี้</p>';
+    html += '<p class="text-green-600 mt-1">เข้า: ' + d.todayLog.Time_In + ' | ออก: ' + d.todayLog.Time_Out + '</p>';
+    html += '</div>';
+  } else if (d.todayLog && d.todayLog.Time_In) {
+    html += '<div class="bg-blue-50 border border-blue-300 rounded-xl p-4 text-center">';
+    html += '<p class="text-blue-700 font-semibold text-lg">📌 ลงเวลาเข้างานแล้ว</p>';
+    html += '<p class="text-blue-600 mt-1">เวลาเข้า: ' + d.todayLog.Time_In + '</p>';
+    html += '<p class="text-blue-500 text-sm mt-2">กรุณาไปที่แท็บ "รายงานผล" เพื่อลงเวลาออก</p>';
+    html += '</div>';
+  } else if (d.canCheckIn) {
+    html += '<div class="text-center">';
+    html += '<button onclick="doCheckIn()" class="btn-primary text-lg px-8 py-4 text-center">ลงเวลาเข้างาน</button>';
+    html += '</div>';
+  } else {
+    html += '<div class="bg-amber-50 border border-amber-300 rounded-xl p-4 text-center">';
+    if (!d.activeCycle) {
+      html += '<p class="text-amber-700 font-medium">⚠️ คุณยังไม่มีรอบงานที่เปิดใช้งาน</p>';
+      html += '<p class="text-amber-600 text-sm">กรุณาติดต่อผู้ดูแลระบบ</p>';
+    } else if (d.approvedDates.length === 0) {
+      html += '<p class="text-amber-700 font-medium">⚠️ คุณยังไม่มีแผนวันทำงานที่อนุมัติ</p>';
+      html += '<p class="text-amber-600 text-sm">กรุณาส่งแผนวันทำงานและรอการอนุมัติ</p>';
+    } else {
+      html += '<p class="text-amber-700 font-medium">⚠️ วันนี้ไม่อยู่ในแผนวันทำงานที่อนุมัติ</p>';
+    }
+    html += '</div>';
+  }
+
+  // ประวัติการเช็คชื่อล่าสุด
+  html += '<div class="mt-6"><h3 class="font-semibold text-forest-700 mb-3">ประวัติล่าสุด</h3>';
+  if (d.logs && d.logs.length > 0) {
+    var recent = d.logs.slice(-5).reverse();
+    html += '<div class="space-y-2">';
+    recent.forEach(function(log) {
+      var statusBadge = log.Status === 'Completed'
+        ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">เสร็จสิ้น</span>'
+        : '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">เข้างานแล้ว</span>';
+      html += '<div class="flex justify-between items-center bg-gray-50 rounded-lg p-3">';
+      html += '<div><span class="font-medium text-sm">' + log.Date + '</span> ' + statusBadge + '</div>';
+      html += '<div class="text-sm text-gray-600">' + (log.Time_In || '-') + ' - ' + (log.Time_Out || '...') + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  } else {
+    html += '<p class="text-gray-500 text-sm">ยังไม่มีประวัติการเช็คชื่อ</p>';
+  }
+  html += '</div></div>';
+  area.innerHTML = html;
+}
+
+function doCheckIn() {
+  Swal.fire({
+    title: 'ยืนยันลงเวลาเข้างาน?',
+    text: 'วันที่ ' + formatThaiDate(APP.data.today),
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#3d8b41',
+    confirmButtonText: 'ยืนยัน',
+    cancelButtonText: 'ยกเลิก'
+  }).then(function(result) {
+    if (result.isConfirmed) {
+      Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+      google.script.run.withSuccessHandler(function(res) {
+        if (res.success) {
+          Swal.fire('สำเร็จ!', 'ลงเวลาเข้างานเรียบร้อย เวลา ' + res.timeIn, 'success');
+          loadUserData();
+        } else {
+          Swal.fire('ไม่สำเร็จ', res.message, 'error');
+        }
+      }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).checkIn(APP.token);
+    }
+  });
+}
+
+// ==================== USER: CHECK OUT ====================
+function renderCheckOut(area) {
+  var d = APP.data;
+  var html = '<div class="card">';
+  html += '<h2 class="text-xl font-bold text-forest-800 mb-4">📋 รายงานผลการปฏิบัติงาน</h2>';
+
+  if (!d.canCheckOut) {
+    if (d.todayLog && d.todayLog.Time_Out) {
+      html += '<div class="bg-green-50 border border-green-300 rounded-xl p-4 text-center">';
+      html += '<p class="text-green-700 font-semibold">✅ รายงานผลเสร็จเรียบร้อยแล้ววันนี้</p>';
+      html += '</div>';
+    } else {
+      html += '<div class="bg-amber-50 border border-amber-300 rounded-xl p-4 text-center">';
+      html += '<p class="text-amber-700 font-medium">⚠️ กรุณาลงเวลาเข้างานก่อน</p>';
+      html += '</div>';
+    }
+    html += '</div>';
+    area.innerHTML = html;
+    return;
+  }
+
+  html += '<div class="bg-blue-50 rounded-xl p-3 mb-4 text-sm text-blue-700">เวลาเข้างาน: <strong>' + d.todayLog.Time_In + '</strong></div>';
+
+  html += '<div class="space-y-4">';
+  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">หน้าที่ที่ทำประจำวัน <span class="text-red-500">*</span></label>';
+  html += '<textarea id="taskReport" class="input-field h-32" placeholder="บรรยายหน้าที่และงานที่ปฏิบัติวันนี้..."></textarea></div>';
+
+  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">รูปถ่ายการปฏิบัติงาน <span class="text-red-500">* (อย่างน้อย 3 รูป)</span></label>';
+  html += '<input type="file" id="photoInput" accept="image/*" multiple onchange="handlePhotoSelect(this)" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-forest-100 file:text-forest-700 hover:file:bg-forest-200">';
+  html += '<p id="photoCount" class="text-sm text-gray-500 mt-1">ยังไม่ได้เลือกรูป</p>';
+  html += '<div id="photoPreview" class="flex flex-wrap gap-2 mt-2"></div></div>';
+
+  html += '<button onclick="doCheckOut()" class="btn-primary w-full text-center py-3 text-lg">ส่งรายงานและลงเวลาออก</button>';
+  html += '</div></div>';
+
+  area.innerHTML = html;
+  APP.photoFiles = [];
+}
+
+function handlePhotoSelect(input) {
+  APP.photoFiles = Array.from(input.files);
+  document.getElementById('photoCount').textContent = 'เลือก ' + APP.photoFiles.length + ' รูป' + (APP.photoFiles.length < 3 ? ' (ต้องอย่างน้อย 3 รูป)' : ' ✓');
+  document.getElementById('photoCount').className = 'text-sm mt-1 ' + (APP.photoFiles.length >= 3 ? 'text-green-600' : 'text-red-500');
+  
+  var preview = document.getElementById('photoPreview');
+  preview.innerHTML = '';
+  APP.photoFiles.forEach(function(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = document.createElement('img');
+      img.src = e.target.result;
+      img.className = 'photo-preview';
+      preview.appendChild(img);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function doCheckOut() {
+  var task = document.getElementById('taskReport').value.trim();
+  if (!task) { Swal.fire('แจ้งเตือน', 'กรุณากรอกรายละเอียดหน้าที่ที่ปฏิบัติ', 'warning'); return; }
+  if (APP.photoFiles.length < 3) { Swal.fire('แจ้งเตือน', 'กรุณาเลือกรูปถ่ายอย่างน้อย 3 รูป', 'warning'); return; }
+
+  Swal.fire({ title: 'กำลังบีบอัดและอัปโหลดรูป...', html: 'กรุณารอสักครู่', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+
+  processPhotos(APP.photoFiles).then(function(photoDataArray) {
+    Swal.update({ title: 'กำลังบันทึกข้อมูล...' });
+    google.script.run.withSuccessHandler(function(res) {
+      if (res.success) {
+        Swal.fire('สำเร็จ!', 'รายงานผลและลงเวลาออกเรียบร้อย เวลา ' + res.timeOut, 'success');
+        loadUserData();
+      } else {
+        Swal.fire('ไม่สำเร็จ', res.message, 'error');
+      }
+    }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).checkOut(APP.token, task, photoDataArray);
+  });
+}
+
+function processPhotos(files) {
+  var maxWidth = 1200;
+  var quality = 0.7;
+  var promises = files.map(function(file) {
+    return new Promise(function(resolve) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = new Image();
+        img.onload = function() {
+          var canvas = document.createElement('canvas');
+          var ratio = Math.min(maxWidth / img.width, 1);
+          canvas.width = img.width * ratio;
+          canvas.height = img.height * ratio;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          var dataUrl = canvas.toDataURL('image/jpeg', quality);
+          var base64 = dataUrl.split(',')[1];
+          resolve({ data: base64, mimeType: 'image/jpeg', fileName: file.name.replace(/\.[^.]+$/, '.jpg') });
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+  return Promise.all(promises);
+}
+
+// ==================== USER: WORK PLAN ====================
+function renderWorkPlan(area) {
+  var d = APP.data;
+  var html = '<div class="card">';
+  html += '<h2 class="text-xl font-bold text-forest-800 mb-4">📅 แผนวันปฏิบัติงาน</h2>';
+
+  if (!d.activeCycle) {
+    html += '<div class="bg-amber-50 border border-amber-300 rounded-xl p-4 text-center">';
+    html += '<p class="text-amber-700 font-medium">⚠️ คุณยังไม่มีรอบงานที่เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ</p>';
+    html += '</div></div>';
+    area.innerHTML = html;
+    return;
+  }
+
+  // สรุปรอบงาน
+  var cycle = d.activeCycle;
+  var totalApproved = d.plans.filter(function(p) { return p.Plan_Status === 'Approved' && p.CycleID === cycle.CycleID; }).length;
+  var totalPending = d.plans.filter(function(p) { return p.Plan_Status === 'Pending' && p.CycleID === cycle.CycleID; }).length;
+  var totalCompleted = d.plans.filter(function(p) { return p.Completed_LogID && p.CycleID === cycle.CycleID; }).length;
+
+  html += '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">';
+  html += '<div class="stat-card"><p class="text-xs text-gray-500">รอบงาน</p><p class="text-sm font-semibold">' + cycle.Start_Date + '</p><p class="text-xs text-gray-400">ถึง ' + cycle.End_Date + '</p></div>';
+  html += '<div class="stat-card"><p class="text-xs text-gray-500">ต้องทำงาน</p><p class="text-2xl font-bold text-forest-600">' + (cycle.Required_Work_Days || 30) + '</p><p class="text-xs text-gray-400">วัน</p></div>';
+  html += '<div class="stat-card"><p class="text-xs text-gray-500">อนุมัติแล้ว</p><p class="text-2xl font-bold text-green-600">' + totalApproved + '</p><p class="text-xs text-gray-400">วัน</p></div>';
+  html += '<div class="stat-card"><p class="text-xs text-gray-500">รออนุมัติ</p><p class="text-2xl font-bold text-amber-600">' + totalPending + '</p><p class="text-xs text-gray-400">วัน</p></div>';
+  html += '</div>';
+
+  // ถ้ามีแผนรออนุมัติ
+  if (d.hasPendingPlan) {
+    html += '<div class="bg-amber-50 border border-amber-300 rounded-xl p-4 text-center mb-4">';
+    html += '<p class="text-amber-700 font-medium">⏳ คุณมีแผนวันทำงานที่รออนุมัติอยู่ ไม่สามารถส่งแผนใหม่ได้จนกว่าจะได้รับการอนุมัติ</p>';
+    html += '</div>';
+  } else {
+    // ปฏิทินเลือกวัน
+    html += '<div class="mb-4"><h3 class="font-semibold text-forest-700 mb-2">เลือกวันปฏิบัติงาน (เลือก 30 วัน)</h3>';
+    html += '<p id="selectedCount" class="text-sm text-gray-500 mb-2">เลือกแล้ว: 0 / 30 วัน</p>';
+    html += renderCalendar(cycle.Start_Date, cycle.End_Date, d.approvedDates, d.plans.filter(function(p) { return p.Plan_Status === 'Pending'; }).map(function(p) { return p.Plan_Date; }));
+    html += '<button onclick="submitWorkPlan()" class="btn-primary w-full text-center py-3 mt-4">ส่งแผนวันทำงาน</button>';
+    html += '</div>';
+  }
+
+  // รายการแผนที่ส่งแล้ว
+  html += '<h3 class="font-semibold text-forest-700 mb-2 mt-4">รายการแผนวันทำงาน</h3>';
+  var plansInCycle = d.plans.filter(function(p) { return p.CycleID === cycle.CycleID; });
+  if (plansInCycle.length > 0) {
+    html += '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-forest-600 text-white">';
+    html += '<th class="px-3 py-2 text-left rounded-tl-lg">วันที่</th><th class="px-3 py-2 text-left">สถานะ</th><th class="px-3 py-2 text-left rounded-tr-lg">หมายเหตุ</th></tr></thead><tbody>';
+    plansInCycle.sort(function(a, b) { return a.Plan_Date > b.Plan_Date ? 1 : -1; }).forEach(function(p, i) {
+      var badge = planStatusBadge(p.Plan_Status);
+      html += '<tr class="' + (i % 2 ? 'bg-gray-50' : '') + '"><td class="px-3 py-2">' + p.Plan_Date + '</td><td class="px-3 py-2">' + badge + '</td><td class="px-3 py-2 text-xs text-gray-500">' + (p.Notes || '-') + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  } else {
+    html += '<p class="text-gray-500 text-sm">ยังไม่มีแผนวันทำงาน</p>';
+  }
+
+  html += '</div>';
+  area.innerHTML = html;
+  APP.selectedPlanDates = [];
+}
+
+function renderCalendar(startDate, endDate, approvedDates, pendingDates) {
+  var start = new Date(startDate);
+  var end = new Date(endDate);
+  var today = new Date(APP.data.today);
+  var html = '<div class="space-y-4">';
+
+  var current = new Date(start.getFullYear(), start.getMonth(), 1);
+  var endMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0);
+
+  while (current <= endMonth) {
+    var year = current.getFullYear();
+    var month = current.getMonth();
+    var monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    html += '<div class="bg-gray-50 rounded-xl p-3"><h4 class="font-semibold text-center text-forest-700 mb-2">' + monthNames[month] + ' ' + (year + 543) + '</h4>';
+    html += '<div class="grid grid-cols-7 gap-1 text-center text-xs text-gray-500 mb-1"><div>อา</div><div>จ</div><div>อ</div><div>พ</div><div>พฤ</div><div>ศ</div><div>ส</div></div>';
+    html += '<div class="grid grid-cols-7 gap-1">';
+
+    var firstDay = new Date(year, month, 1).getDay();
+    for (var i = 0; i < firstDay; i++) html += '<div></div>';
+
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    for (var d = 1; d <= daysInMonth; d++) {
+      var date = new Date(year, month, d);
+      var dateStr = formatDateLocal(date);
+      var isInRange = date >= start && date <= end;
+      var isApproved = approvedDates.indexOf(dateStr) !== -1;
+      var isPending = pendingDates.indexOf(dateStr) !== -1;
+      var isToday = dateStr === APP.data.today;
+      var isPast = dateStr < APP.data.today;
+
+      var holidayName = getThaiHoliday(dateStr);
+      var cls = 'calendar-day';
+      if (!isInRange || isPast || isApproved || isPending) cls += ' disabled';
+      if (isApproved) cls += ' approved';
+      if (isPending) cls += ' pending';
+      if (isToday) cls += ' today';
+      if (holidayName && !isApproved && !isPending) cls += ' holiday holiday-tooltip';
+
+      var clickable = isInRange && !isPast && !isApproved && !isPending;
+      var extraAttr = holidayName ? ' data-holiday="' + holidayName + '" title="' + holidayName + '"' : '';
+      html += '<div class="' + cls + '" ' + (clickable ? 'onclick="togglePlanDate(this, \'' + dateStr + '\')"' : '') + ' data-date="' + dateStr + '"' + extraAttr + '>' + d + '</div>';
+    }
+    html += '</div></div>';
+    current = new Date(year, month + 1, 1);
+  }
+
+  html += '<div class="flex flex-wrap gap-3 text-xs mt-2">';
+  html += '<div class="flex items-center gap-1"><div class="w-4 h-4 rounded bg-green-500"></div> อนุมัติแล้ว</div>';
+  html += '<div class="flex items-center gap-1"><div class="w-4 h-4 rounded bg-amber-500"></div> รออนุมัติ</div>';
+  html += '<div class="flex items-center gap-1"><div class="w-4 h-4 rounded bg-forest-500"></div> เลือกใหม่</div>';
+  html += '<div class="flex items-center gap-1"><div class="w-4 h-4 rounded border-2 border-dashed border-red-400 bg-red-100"></div> วันหยุด/วันสำคัญ</div>';
+  html += '</div></div>';
+  return html;
+}
+
+function togglePlanDate(el, dateStr) {
+  var idx = APP.selectedPlanDates.indexOf(dateStr);
+  if (idx !== -1) {
+    APP.selectedPlanDates.splice(idx, 1);
+    el.classList.remove('selected');
+  } else {
+    if (APP.selectedPlanDates.length >= 30) {
+      Swal.fire({
+        title: 'เลือกครบ 30 วันแล้ว',
+        text: 'ไม่สามารถเลือกเกิน 30 วันได้ กรุณายกเลิกวันที่ไม่ต้องการก่อน',
+        icon: 'warning',
+        confirmButtonColor: '#3d8b41',
+        confirmButtonText: 'ตกลง'
+      });
+      return;
+    }
+    APP.selectedPlanDates.push(dateStr);
+    el.classList.add('selected');
+  }
+  var count = APP.selectedPlanDates.length;
+  var countEl = document.getElementById('selectedCount');
+  countEl.textContent = 'เลือกแล้ว: ' + count + ' / 30 วัน';
+  countEl.className = 'text-sm mb-2 ' + (count === 30 ? 'text-green-600 font-semibold' : count > 25 ? 'text-amber-600' : 'text-gray-500');
+}
+
+function submitWorkPlan() {
+  if (APP.selectedPlanDates.length === 0) { Swal.fire('แจ้งเตือน', 'กรุณาเลือกวันปฏิบัติงานอย่างน้อย 1 วัน', 'warning'); return; }
+  if (APP.selectedPlanDates.length !== 30) {
+    Swal.fire({ title: 'จำนวนวันไม่ครบ 30 วัน', text: 'คุณเลือก ' + APP.selectedPlanDates.length + ' วัน ต้องการส่งแผนหรือไม่?', icon: 'question', showCancelButton: true, confirmButtonColor: '#3d8b41', confirmButtonText: 'ส่งแผน', cancelButtonText: 'ยกเลิก' }).then(function(result) { if (result.isConfirmed) doSubmitPlan(); });
+    return;
+  }
+  doSubmitPlan();
+}
+
+function doSubmitPlan() {
+  Swal.fire({ title: 'กำลังส่งแผนวันทำงาน...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+  var sorted = APP.selectedPlanDates.sort();
+  google.script.run.withSuccessHandler(function(res) {
+    if (res.success) {
+      Swal.fire('สำเร็จ!', 'ส่งแผนวันทำงาน ' + res.count + ' วันเรียบร้อย รอการอนุมัติ', 'success');
+      loadUserData();
+    } else {
+      Swal.fire('ไม่สำเร็จ', res.message, 'error');
+    }
+  }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).createWorkPlan(APP.token, APP.data.activeCycle.CycleID, sorted);
+}
+
+// ==================== USER: SCHEDULE CHANGE REQUEST ====================
+function renderScheduleRequest(area) {
+  var d = APP.data;
+  var html = '<div class="card">';
+  html += '<h2 class="text-xl font-bold text-forest-800 mb-4">🔄 ขอสลับวันปฏิบัติงาน</h2>';
+
+  if (!d.activeCycle) {
+    html += '<div class="bg-amber-50 border border-amber-300 rounded-xl p-4 text-center"><p class="text-amber-700">⚠️ ไม่มีรอบงานที่เปิดใช้งาน</p></div></div>';
+    area.innerHTML = html;
+    return;
+  }
+
+  var approvedPlans = d.plans.filter(function(p) { return p.Plan_Status === 'Approved' && p.CycleID === d.activeCycle.CycleID && !p.Completed_LogID; });
+
+  html += '<div class="space-y-4 mb-6">';
+  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">วันเดิม (ที่ต้องการเปลี่ยน)</label>';
+  html += '<select id="originalDate" class="input-field"><option value="">-- เลือกวันเดิม --</option>';
+  approvedPlans.forEach(function(p) { html += '<option value="' + p.Plan_Date + '">' + p.Plan_Date + '</option>'; });
+  html += '</select></div>';
+  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">วันใหม่ (ที่ต้องการเปลี่ยนไป)</label>';
+  html += '<input type="date" id="requestedDate" class="input-field" min="' + d.activeCycle.Start_Date + '" max="' + d.activeCycle.End_Date + '"></div>';
+  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">เหตุผล</label>';
+  html += '<textarea id="changeReason" class="input-field h-24" placeholder="ระบุเหตุผลในการขอสลับวัน..."></textarea></div>';
+  html += '<button onclick="submitScheduleChange()" class="btn-primary w-full text-center py-3">ยื่นคำร้องขอสลับวัน</button>';
+  html += '</div>';
+
+  // ประวัติคำร้อง
+  html += '<h3 class="font-semibold text-forest-700 mb-2">ประวัติคำร้อง</h3>';
+  if (d.requests && d.requests.length > 0) {
+    html += '<div class="space-y-2">';
+    d.requests.slice().reverse().forEach(function(r) {
+      var badge = r.Status === 'Approved' ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">อนุมัติแล้ว</span>'
+        : r.Status === 'Rejected' ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">ไม่อนุมัติ</span>'
+        : '<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">รอดำเนินการ</span>';
+      html += '<div class="bg-gray-50 rounded-lg p-3"><div class="flex justify-between items-center">';
+      html += '<span class="text-sm font-medium">' + r.Original_Date + ' → ' + r.Requested_Date + '</span>' + badge;
+      html += '</div><p class="text-xs text-gray-500 mt-1">เหตุผล: ' + r.Reason + '</p></div>';
+    });
+    html += '</div>';
+  } else {
+    html += '<p class="text-gray-500 text-sm">ยังไม่มีประวัติคำร้อง</p>';
+  }
+
+  html += '</div>';
+  area.innerHTML = html;
+}
+
+function submitScheduleChange() {
+  var orig = document.getElementById('originalDate').value;
+  var req = document.getElementById('requestedDate').value;
+  var reason = document.getElementById('changeReason').value.trim();
+  if (!orig || !req || !reason) { Swal.fire('แจ้งเตือน', 'กรุณากรอกข้อมูลให้ครบถ้วน', 'warning'); return; }
+
+  Swal.fire({ title: 'กำลังยื่นคำร้อง...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+  google.script.run.withSuccessHandler(function(res) {
+    if (res.success) {
+      Swal.fire('สำเร็จ!', 'ยื่นคำร้องขอสลับวันเรียบร้อย', 'success');
+      loadUserData();
+    } else {
+      Swal.fire('ไม่สำเร็จ', res.message, 'error');
+    }
+  }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).createScheduleChangeRequest(APP.token, APP.data.activeCycle.CycleID, orig, req, reason);
+}
+
+// ==================== ADMIN: DASHBOARD ====================
+function renderDashboard(area) {
+  var d = APP.data;
+  var html = '<h2 class="text-xl font-bold text-forest-800 mb-4">📊 Dashboard</h2>';
+
+  html += '<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">';
+  html += '<div class="stat-card"><p class="text-sm text-gray-500">ผู้มาปฏิบัติงานวันนี้</p><p class="text-3xl font-bold text-forest-600">' + d.todayAttendanceCount + '</p><p class="text-xs text-gray-400">คน</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#f59e0b"><p class="text-sm text-gray-500">รอบงานที่กำลังดำเนินการ</p><p class="text-3xl font-bold text-amber-600">' + d.activeCyclesCount + '</p><p class="text-xs text-gray-400">รอบ</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#ef4444"><p class="text-sm text-gray-500">คำร้องรอดำเนินการ</p><p class="text-3xl font-bold text-red-500">' + d.pendingRequestsCount + '</p><p class="text-xs text-gray-400">รายการ</p></div>';
+  html += '</div>';
+
+  // กราฟ
+  html += '<div class="card mb-6"><h3 class="font-semibold text-forest-700 mb-3">สถิติการมาปฏิบัติงานรายเดือน</h3>';
+  html += '<div style="max-height:300px;"><canvas id="monthlyChart"></canvas></div></div>';
+
+  area.innerHTML = html;
+
+  // วาดกราฟ
+  setTimeout(function() {
+    var ctx = document.getElementById('monthlyChart');
+    if (!ctx) return;
+    var labels = Object.keys(d.monthlyStats).sort();
+    var values = labels.map(function(k) { return d.monthlyStats[k]; });
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels.map(function(l) { var p = l.split('-'); return p[1] + '/' + p[0]; }),
+        datasets: [{ label: 'จำนวนครั้ง', data: values, backgroundColor: 'rgba(61,139,65,0.6)', borderColor: '#3d8b41', borderWidth: 1, borderRadius: 8 }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }, plugins: { legend: { display: false } } }
+    });
+  }, 100);
+}
+
+// ==================== ADMIN: WORK CYCLES ====================
+function renderCycles(area) {
+  var d = APP.data;
+  var html = '<div class="card mb-6">';
+  html += '<h2 class="text-xl font-bold text-forest-800 mb-4">🔄 สร้างรอบงานใหม่</h2>';
+  html += '<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">';
+  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">เจ้าหน้าที่</label>';
+  html += '<select id="cycleUser" class="input-field"><option value="">-- เลือกเจ้าหน้าที่ --</option>';
+  d.users.filter(function(u) { return u.Role !== 'Admin'; }).forEach(function(u) {
+    html += '<option value="' + u.ID + '" data-name="' + u.Name + '">' + u.Name + ' (' + u.Username + ')</option>';
+  });
+  html += '</select></div>';
+  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">วันเริ่มรอบ</label><input type="date" id="cycleStart" class="input-field"></div>';
+  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">วันสิ้นสุดรอบ (ไม่จำเป็น, ค่าเริ่มต้น 90 วัน)</label><input type="date" id="cycleEnd" class="input-field"></div>';
+  html += '</div>';
+  html += '<button onclick="createCycle()" class="btn-primary mt-4">สร้างรอบงาน</button>';
+  html += '</div>';
+
+  // รายการรอบงาน
+  html += '<div class="card"><h3 class="font-semibold text-forest-700 mb-3">รายการรอบงาน</h3>';
+  html += '<div class="overflow-x-auto"><table id="cyclesTable" class="display w-full text-sm"><thead><tr>';
+  html += '<th>เจ้าหน้าที่</th><th>วันเริ่ม</th><th>วันสิ้นสุด</th><th>จำนวนวัน</th><th>สถานะ</th>';
+  html += '</tr></thead><tbody>';
+  d.cycles.forEach(function(c) {
+    html += '<tr><td>' + c.Name + '</td><td>' + c.Start_Date + '</td><td>' + c.End_Date + '</td><td>' + c.Required_Work_Days + '</td>';
+    html += '<td>' + (c.Status === 'Active' ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Active</span>' : c.Status) + '</td></tr>';
+  });
+  html += '</tbody></table></div></div>';
+
+  area.innerHTML = html;
+  setTimeout(function() { if ($.fn.DataTable.isDataTable('#cyclesTable')) $('#cyclesTable').DataTable().destroy(); $('#cyclesTable').DataTable({ pageLength: 10, language: { search: 'ค้นหา:', lengthMenu: 'แสดง _MENU_ รายการ', info: 'แสดง _START_ ถึง _END_ จาก _TOTAL_ รายการ', paginate: { first: 'แรก', last: 'สุดท้าย', next: 'ถัดไป', previous: 'ก่อนหน้า' } } }); }, 100);
+}
+
+function createCycle() {
+  var sel = document.getElementById('cycleUser');
+  var userId = sel.value;
+  var userName = sel.options[sel.selectedIndex].getAttribute('data-name');
+  var startDate = document.getElementById('cycleStart').value;
+  var endDate = document.getElementById('cycleEnd').value || null;
+  if (!userId || !startDate) { Swal.fire('แจ้งเตือน', 'กรุณาเลือกเจ้าหน้าที่และวันเริ่มรอบ', 'warning'); return; }
+
+  Swal.fire({ title: 'กำลังสร้างรอบงาน...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+  google.script.run.withSuccessHandler(function(res) {
+    if (res.success) { Swal.fire('สำเร็จ!', 'สร้างรอบงานเรียบร้อย', 'success'); loadAdminData(); }
+    else { Swal.fire('ไม่สำเร็จ', res.message || 'เกิดข้อผิดพลาด', 'error'); }
+  }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).createWorkCycle(APP.token, userId, userName, startDate, endDate);
+}
+
+// ==================== ADMIN: APPROVE PLANS ====================
+function renderApprovePlans(area) {
+  var d = APP.data;
+  var html = '<h2 class="text-xl font-bold text-forest-800 mb-4">✅ อนุมัติแผนวันทำงาน</h2>';
+
+  // ===== สรุปสถานะการส่งแผนของเจ้าหน้าที่ทั้งหมด =====
+  var staffUsers = d.users.filter(function(u) { return u.Role !== 'Admin'; });
+  var activeCyclesByUser = {};
+  d.cycles.filter(function(c) { return c.Status === 'Active'; }).forEach(function(c) {
+    activeCyclesByUser[String(c.UserID)] = c;
+  });
+
+  // ใช้ pendingSubmissions จาก backend เป็นแหล่งข้อมูลหลัก (จัดกลุ่มถูกต้องแล้ว)
+  var pendingByUser = {};
+  d.pendingSubmissions.forEach(function(sub) {
+    var uid = String(sub.userId);
+    if (!pendingByUser[uid]) pendingByUser[uid] = 0;
+    pendingByUser[uid] += sub.plans.length;
+  });
+
+  var countSubmitted = d.pendingSubmissions.length;
+  var countFull = d.pendingSubmissions.filter(function(s) { return s.plans.length >= 30; }).length;
+  var countIncomplete = countSubmitted - countFull;
+
+  var userPlanSummary = [];
+  var countNotSubmitted = 0;
+
+  staffUsers.forEach(function(u) {
+    var uid = String(u.ID);
+    var cycle = activeCyclesByUser[uid];
+    if (!cycle) return;
+
+    var pendingCount = pendingByUser[uid] || 0;
+    var userPlans = d.plans.filter(function(p) { return String(p.UserID) === uid && p.CycleID === cycle.CycleID; });
+    var approvedCount = userPlans.filter(function(p) { return p.Plan_Status === 'Approved'; }).length;
+    var totalSelected = pendingCount + approvedCount;
+
+    var status, statusClass;
+    if (pendingCount > 0) {
+      if (pendingCount >= 30) { status = 'ครบ 30 วัน'; statusClass = 'bg-green-100 text-green-700'; }
+      else { status = 'ไม่ครบ (' + pendingCount + ' วัน)'; statusClass = 'bg-amber-100 text-amber-700'; }
+    } else if (approvedCount >= 30) {
+      status = 'อนุมัติแล้ว'; statusClass = 'bg-blue-100 text-blue-700';
+    } else if (approvedCount > 0) {
+      status = 'อนุมัติบางส่วน (' + approvedCount + ')'; statusClass = 'bg-blue-50 text-blue-500';
+    } else {
+      countNotSubmitted++;
+      status = 'ยังไม่ส่งแผน'; statusClass = 'bg-gray-100 text-gray-500';
+    }
+
+    userPlanSummary.push({
+      name: u.Name,
+      username: u.Username,
+      cycleStart: cycle.Start_Date,
+      cycleEnd: cycle.End_Date,
+      pending: pendingCount,
+      approved: approvedCount,
+      total: totalSelected,
+      status: status,
+      statusClass: statusClass
+    });
+  });
+
+  var totalWithCycle = staffUsers.filter(function(u) { return !!activeCyclesByUser[String(u.ID)]; }).length;
+
+  // การ์ดสรุป
+  html += '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">';
+  html += '<div class="stat-card"><p class="text-xs text-gray-500">เจ้าหน้าที่มีรอบงาน</p><p class="text-2xl font-bold text-forest-600">' + totalWithCycle + '</p><p class="text-xs text-gray-400">คน</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#f59e0b"><p class="text-xs text-gray-500">ส่งแผนแล้ว</p><p class="text-2xl font-bold text-amber-600">' + countSubmitted + '</p><p class="text-xs text-gray-400">คน (รออนุมัติ)</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#22c55e"><p class="text-xs text-gray-500">ส่งครบ 30 วัน</p><p class="text-2xl font-bold text-green-600">' + countFull + '</p><p class="text-xs text-gray-400">คน</p></div>';
+  html += '<div class="stat-card" style="border-left-color:#ef4444"><p class="text-xs text-gray-500">ยังไม่ส่งแผน</p><p class="text-2xl font-bold text-red-500">' + countNotSubmitted + '</p><p class="text-xs text-gray-400">คน</p></div>';
+  html += '</div>';
+
+  // ตารางติดตามรายบุคคล
+  if (userPlanSummary.length > 0) {
+    html += '<div class="card mb-5"><h3 class="font-semibold text-forest-700 mb-3">📋 ติดตามสถานะการส่งแผนรายบุคคล</h3>';
+    html += '<div class="overflow-x-auto"><table id="planTrackingTable" class="display w-full text-sm"><thead><tr>';
+    html += '<th>ชื่อ</th><th>รอบงาน</th><th>รออนุมัติ</th><th>อนุมัติแล้ว</th><th>รวม</th><th>สถานะ</th>';
+    html += '</tr></thead><tbody>';
+    userPlanSummary.forEach(function(u) {
+      html += '<tr>';
+      html += '<td><span class="font-medium">' + u.name + '</span><br><span class="text-xs text-gray-400">' + u.username + '</span></td>';
+      html += '<td class="text-xs">' + u.cycleStart + '<br>ถึง ' + u.cycleEnd + '</td>';
+      html += '<td class="text-center">' + (u.pending > 0 ? '<span class="font-semibold text-amber-600">' + u.pending + '</span>' : '-') + '</td>';
+      html += '<td class="text-center">' + (u.approved > 0 ? '<span class="font-semibold text-green-600">' + u.approved + '</span>' : '-') + '</td>';
+      html += '<td class="text-center font-semibold">' + u.total + ' / 30</td>';
+      html += '<td><span class="text-xs px-2 py-0.5 rounded-full ' + u.statusClass + '">' + u.status + '</span></td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+  }
+
+  // รายการแผนรออนุมัติ
+  if (d.pendingSubmissions.length === 0) {
+    html += '<div class="card text-center text-gray-500 py-8">ไม่มีแผนรออนุมัติในขณะนี้</div>';
+  } else {
+    html += '<h3 class="font-semibold text-forest-700 mb-3 text-lg">แผนที่รออนุมัติ (' + d.pendingSubmissions.length + ' รายการ)</h3>';
+    d.pendingSubmissions.forEach(function(sub) {
+      var isFull = sub.plans.length >= 30;
+      html += '<div class="card mb-4 ' + (isFull ? 'border-l-4 border-green-400' : 'border-l-4 border-amber-400') + '">';
+      html += '<div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">';
+      html += '<div><h3 class="font-semibold text-forest-700">' + sub.name + '</h3>';
+      html += '<p class="text-xs text-gray-500">Submission: ' + sub.submissionId + ' | ส่งเมื่อ: ' + sub.submittedAt + '</p>';
+      html += '<p class="text-sm mt-1">' + (isFull ? '<span class="text-green-600 font-medium">✅ ครบ 30 วัน</span>' : '<span class="text-amber-600 font-medium">⚠️ ' + sub.plans.length + ' วัน (ไม่ครบ 30)</span>') + '</p></div>';
+      html += '<div class="flex gap-2">';
+      html += '<button onclick="approveSubmission(\'' + sub.submissionId + '\', \'Approved\')" class="btn-primary btn-sm">อนุมัติ (' + sub.plans.length + ' วัน)</button>';
+      html += '<button onclick="approveSubmission(\'' + sub.submissionId + '\', \'Rejected\')" class="btn-danger btn-sm">ไม่อนุมัติ</button>';
+      html += '</div></div>';
+
+      html += '<div class="flex flex-wrap gap-2">';
+      sub.plans.sort(function(a, b) { return a.Plan_Date > b.Plan_Date ? 1 : -1; }).forEach(function(p) {
+        var hol = getThaiHoliday(p.Plan_Date);
+        var holCls = hol ? 'bg-red-50 border-red-300 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-700';
+        html += '<span class="text-xs border px-2 py-1 rounded-lg ' + holCls + '" ' + (hol ? 'title="' + hol + '"' : '') + '>' + p.Plan_Date + (hol ? ' 🔴' : '') + '</span>';
+      });
+      html += '</div></div>';
+    });
+  }
+
+  area.innerHTML = html;
+  setTimeout(function() { if ($.fn.DataTable.isDataTable('#planTrackingTable')) $('#planTrackingTable').DataTable().destroy(); $('#planTrackingTable').DataTable({ pageLength: 10, order: [[5, 'asc']], language: { search: 'ค้นหา:', lengthMenu: 'แสดง _MENU_ รายการ', info: 'แสดง _START_ ถึง _END_ จาก _TOTAL_ รายการ', paginate: { first: 'แรก', last: 'สุดท้าย', next: 'ถัดไป', previous: 'ก่อนหน้า' }, zeroRecords: 'ไม่พบข้อมูล' } }); }, 100);
+}
+
+function approveSubmission(submissionId, status) {
+  var action = status === 'Approved' ? 'อนุมัติ' : 'ไม่อนุมัติ';
+  Swal.fire({
+    title: action + 'แผนวันทำงาน?',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: status === 'Approved' ? '#3d8b41' : '#dc2626',
+    confirmButtonText: action,
+    cancelButtonText: 'ยกเลิก'
+  }).then(function(result) {
+    if (result.isConfirmed) {
+      Swal.fire({ title: 'กำลังดำเนินการ...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+      google.script.run.withSuccessHandler(function(res) {
+        if (res.success) { Swal.fire('สำเร็จ!', action + 'แผนเรียบร้อย (' + res.count + ' วัน)', 'success'); loadAdminData(); }
+        else { Swal.fire('ไม่สำเร็จ', 'เกิดข้อผิดพลาด', 'error'); }
+      }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).updateWorkPlanApprovalStatus(APP.token, submissionId, status);
+    }
+  });
+}
+
+// ==================== ADMIN: APPROVE REQUESTS ====================
+function renderApproveRequests(area) {
+  var d = APP.data;
+  var html = '<h2 class="text-xl font-bold text-forest-800 mb-4">📝 อนุมัติคำร้องขอสลับวัน</h2>';
+
+  if (d.pendingRequests.length === 0) {
+    html += '<div class="card text-center text-gray-500 py-8">ไม่มีคำร้องรอดำเนินการ</div>';
+  } else {
+    d.pendingRequests.forEach(function(r) {
+      html += '<div class="card mb-4">';
+      html += '<div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">';
+      html += '<div><h3 class="font-semibold text-forest-700">' + r.Name + '</h3>';
+      html += '<p class="text-sm mt-1"><span class="text-red-500">' + r.Original_Date + '</span> → <span class="text-green-600">' + r.Requested_Date + '</span></p>';
+      html += '<p class="text-xs text-gray-500 mt-1">เหตุผล: ' + r.Reason + '</p></div>';
+      html += '<div class="flex gap-2">';
+      html += '<button onclick="approveRequest(\'' + r.ReqID + '\', \'Approved\')" class="btn-primary btn-sm">อนุมัติ</button>';
+      html += '<button onclick="approveRequest(\'' + r.ReqID + '\', \'Rejected\')" class="btn-danger btn-sm">ไม่อนุมัติ</button>';
+      html += '</div></div></div>';
+    });
+  }
+
+  // ประวัติทั้งหมด
+  var allReqs = d.requests.filter(function(r) { return r.Status !== 'Pending'; });
+  if (allReqs.length > 0) {
+    html += '<div class="card mt-4"><h3 class="font-semibold text-forest-700 mb-3">ประวัติคำร้อง</h3>';
+    html += '<div class="space-y-2">';
+    allReqs.slice().reverse().forEach(function(r) {
+      var badge = r.Status === 'Approved' ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">อนุมัติแล้ว</span>' : '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">ไม่อนุมัติ</span>';
+      html += '<div class="bg-gray-50 rounded-lg p-3"><div class="flex justify-between items-center">';
+      html += '<span class="text-sm"><strong>' + r.Name + '</strong> | ' + r.Original_Date + ' → ' + r.Requested_Date + '</span>' + badge;
+      html += '</div></div>';
+    });
+    html += '</div></div>';
+  }
+
+  area.innerHTML = html;
+}
+
+function approveRequest(reqId, status) {
+  var action = status === 'Approved' ? 'อนุมัติ' : 'ไม่อนุมัติ';
+  Swal.fire({
+    title: action + 'คำร้องขอสลับวัน?',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: status === 'Approved' ? '#3d8b41' : '#dc2626',
+    confirmButtonText: action,
+    cancelButtonText: 'ยกเลิก'
+  }).then(function(result) {
+    if (result.isConfirmed) {
+      Swal.fire({ title: 'กำลังดำเนินการ...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+      google.script.run.withSuccessHandler(function(res) {
+        if (res.success) { Swal.fire('สำเร็จ!', action + 'คำร้องเรียบร้อย', 'success'); loadAdminData(); }
+      }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).updateScheduleRequestStatus(APP.token, reqId, status);
+    }
+  });
+}
+
+// ==================== ADMIN: REPORTS ====================
+function renderReports(area) {
+  var d = APP.data;
+  var html = '<h2 class="text-xl font-bold text-forest-800 mb-4">📄 รายงานการปฏิบัติงาน</h2>';
+  html += '<div class="card"><div class="overflow-x-auto">';
+  html += '<table id="reportsTable" class="display w-full text-sm"><thead><tr>';
+  html += '<th>วันที่</th><th>ชื่อ</th><th>เข้า</th><th>ออก</th><th>งานที่ทำ</th><th>รูปถ่าย</th><th>สถานะ</th>';
+  html += '</tr></thead><tbody>';
+  d.logs.slice().reverse().forEach(function(l) {
+    var photoBtn = l.Photo_URL ? '<a href="' + l.Photo_URL + '" target="_blank" class="text-forest-600 underline text-xs">เปิดโฟลเดอร์</a>' : '-';
+    var statusBadge = l.Status === 'Completed' ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">เสร็จ</span>' : '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">เข้าแล้ว</span>';
+    html += '<tr><td>' + l.Date + '</td><td>' + l.Name + '</td><td>' + (l.Time_In || '-') + '</td><td>' + (l.Time_Out || '-') + '</td>';
+    html += '<td class="max-w-xs truncate">' + (l.Task_Report || '-') + '</td><td>' + photoBtn + '</td><td>' + statusBadge + '</td></tr>';
+  });
+  html += '</tbody></table></div></div>';
+
+  area.innerHTML = html;
+  setTimeout(function() { if ($.fn.DataTable.isDataTable('#reportsTable')) $('#reportsTable').DataTable().destroy(); $('#reportsTable').DataTable({ pageLength: 15, order: [[0, 'desc']], language: { search: 'ค้นหา:', lengthMenu: 'แสดง _MENU_ รายการ', info: 'แสดง _START_ ถึง _END_ จาก _TOTAL_ รายการ', paginate: { first: 'แรก', last: 'สุดท้าย', next: 'ถัดไป', previous: 'ก่อนหน้า' } } }); }, 100);
+}
+
+// ==================== UTILITY ====================
+function showLoading(text) {
+  document.getElementById('loadingText').textContent = text || 'กำลังโหลด...';
+  document.getElementById('loadingOverlay').style.display = 'flex';
+}
+function hideLoading() { document.getElementById('loadingOverlay').style.display = 'none'; }
+function showError(msg) { document.getElementById('errorMessage').textContent = msg; document.getElementById('errorBanner').style.display = 'block'; }
+function hideError() { document.getElementById('errorBanner').style.display = 'none'; }
+
+function formatThaiDate(dateStr) {
+  if (!dateStr) return '-';
+  var months = ['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  var parts = dateStr.split('-');
+  return parseInt(parts[2]) + ' ' + months[parseInt(parts[1])] + ' ' + (parseInt(parts[0]) + 543);
+}
+
+function formatDateLocal(date) {
+  var y = date.getFullYear();
+  var m = ('0' + (date.getMonth() + 1)).slice(-2);
+  var d = ('0' + date.getDate()).slice(-2);
+  return y + '-' + m + '-' + d;
+}
+
+function planStatusBadge(status) {
+  switch (status) {
+    case 'Approved': return '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">อนุมัติ</span>';
+    case 'Pending': return '<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">รออนุมัติ</span>';
+    case 'Rejected': return '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">ไม่อนุมัติ</span>';
+    case 'Swapped_Out': return '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">สลับออก</span>';
+    default: return '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">' + status + '</span>';
+  }
+}
+
+function closePhotoModal(e) { if (e.target.id === 'photoModal') e.target.style.display = 'none'; }
+</script>
+</body>
+</html>
