@@ -401,6 +401,7 @@ function enterApp(preloadedData) {
 // ==================== TAB SYSTEM ====================
 function setupUserTabs() {
   var tabs = [
+    { id: 'my_dashboard', label: 'ภาพรวม', icon: '📊' },
     { id: 'checkin', label: 'ลงเวลาเข้างาน', icon: '🕐' },
     { id: 'checkout', label: 'รายงานผล', icon: '📋' },
     { id: 'workplan', label: 'แผนวันทำงาน', icon: '📅' },
@@ -500,6 +501,7 @@ function renderContent() {
 
     stopRealtimeClock();
     switch (APP.currentTab) {
+      case 'my_dashboard': renderUserDashboard(area); break;
       case 'checkin': renderCheckIn(area); break;
       case 'checkout': renderCheckOut(area); break;
       case 'workplan': renderWorkPlan(area); break;
@@ -565,6 +567,138 @@ function startRealtimeClock(mode) {
 
   updateClock();
   clockInterval = setInterval(updateClock, 1000);
+}
+
+// ==================== USER: PERSONAL DASHBOARD ====================
+function renderUserDashboard(area) {
+  var d = APP.data;
+  var html = '';
+
+  // Header
+  html += '<div class="card mb-4">';
+  html += '<div class="flex items-center gap-3 mb-2">';
+  html += '<div class="w-12 h-12 bg-forest-500 rounded-full flex items-center justify-center text-white text-xl font-bold">' + (d.user.name ? d.user.name.charAt(0) : '?') + '</div>';
+  html += '<div><h2 class="text-xl font-bold text-forest-800">สวัสดี, ' + d.user.name + '</h2>';
+  html += '<p class="text-sm text-gray-500">' + d.user.username + ' • ' + d.today + '</p></div>';
+  html += '</div></div>';
+
+  // === สถานะวันนี้ ===
+  var todayStatus = '';
+  var todayIcon = '';
+  var todayColor = '';
+  if (d.todayLog && d.todayLog.Time_Out) {
+    todayStatus = 'รายงานผลแล้ว'; todayIcon = '✅'; todayColor = 'green';
+  } else if (d.todayLog && d.todayLog.Time_In) {
+    todayStatus = 'เช็คชื่อแล้ว รอรายงานผล'; todayIcon = '🕐'; todayColor = 'blue';
+  } else if (d.canCheckIn) {
+    todayStatus = 'มีแผนวันนี้ ยังไม่เช็คชื่อ'; todayIcon = '⚠️'; todayColor = 'amber';
+  } else {
+    todayStatus = 'ไม่มีแผนปฏิบัติงานวันนี้'; todayIcon = '🏖️'; todayColor = 'gray';
+  }
+  html += '<div class="bg-' + todayColor + '-50 border border-' + todayColor + '-300 rounded-xl p-4 mb-4 text-center">';
+  html += '<p class="text-lg font-semibold text-' + todayColor + '-700">' + todayIcon + ' ' + todayStatus + '</p>';
+  if (d.todayLog && d.todayLog.Time_In) {
+    html += '<p class="text-sm text-' + todayColor + '-600 mt-1">เข้างาน: ' + d.todayLog.Time_In + (d.todayLog.Time_Out ? ' | ออกงาน: ' + d.todayLog.Time_Out : '') + '</p>';
+  }
+  html += '</div>';
+
+  // === สถิติรอบงานปัจจุบัน ===
+  if (d.activeCycle) {
+    var cycle = d.activeCycle;
+    var requiredDays = parseInt(cycle.Required_Work_Days) || 30;
+    var approvedPlans = d.plans.filter(function(p) { return p.Plan_Status === 'Approved' && p.CycleID === cycle.CycleID; });
+    var halfDays = approvedPlans.filter(function(p) { return p.Day_Type === 'Half'; }).length;
+    var fullDays = approvedPlans.length - halfDays;
+    var dayEquiv = fullDays + (halfDays * 0.5);
+    var completedCount = d.logs.filter(function(l) { return l.Date >= cycle.Start_Date && l.Date <= cycle.End_Date && l.Time_In; }).length;
+    var pendingPlanCount = d.plans.filter(function(p) { return p.Plan_Status === 'Pending' && p.CycleID === cycle.CycleID; }).length;
+    var remainingDays = Math.max(0, requiredDays - completedCount);
+    var progressPct = requiredDays > 0 ? Math.min(Math.round((completedCount / requiredDays) * 100), 100) : 0;
+
+    html += '<div class="card mb-4">';
+    html += '<h3 class="font-bold text-forest-800 mb-3">📅 ความคืบหน้ารอบงาน</h3>';
+    html += '<p class="text-xs text-gray-500 mb-3">' + cycle.Start_Date + ' ถึง ' + cycle.End_Date + '</p>';
+
+    // Progress bar
+    var barColor = progressPct >= 80 ? 'bg-green-500' : progressPct >= 50 ? 'bg-blue-500' : 'bg-amber-500';
+    html += '<div class="mb-3"><div class="flex justify-between text-sm mb-1"><span class="font-medium text-forest-700">ปฏิบัติงานแล้ว</span><span class="font-bold text-forest-800">' + completedCount + ' / ' + requiredDays + ' วัน (' + progressPct + '%)</span></div>';
+    html += '<div class="w-full bg-gray-200 rounded-full h-3"><div class="' + barColor + ' h-3 rounded-full transition-all" style="width:' + progressPct + '%"></div></div></div>';
+
+    // Stats grid
+    html += '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">';
+    html += '<div class="stat-card text-center"><p class="text-2xl font-bold text-forest-600">' + requiredDays + '</p><p class="text-xs text-gray-500">ต้องทำงาน</p></div>';
+    html += '<div class="stat-card text-center"><p class="text-2xl font-bold text-green-600">' + dayEquiv + '</p><p class="text-xs text-gray-500">อนุมัติแล้ว' + (halfDays > 0 ? ' (½วัน ' + halfDays + ')' : '') + '</p></div>';
+    html += '<div class="stat-card text-center"><p class="text-2xl font-bold text-blue-600">' + completedCount + '</p><p class="text-xs text-gray-500">เข้างานแล้ว</p></div>';
+    html += '<div class="stat-card text-center"><p class="text-2xl font-bold text-' + (remainingDays > 0 ? 'amber' : 'green') + '-600">' + remainingDays + '</p><p class="text-xs text-gray-500">เหลืออีก</p></div>';
+    html += '</div>';
+    if (pendingPlanCount > 0) {
+      html += '<p class="text-xs text-amber-600 mt-2 text-center">⏳ มีแผนรออนุมัติ ' + pendingPlanCount + ' วัน</p>';
+    }
+    html += '</div>';
+  } else {
+    html += '<div class="card mb-4 text-center text-gray-500 py-4">⚠️ ยังไม่มีรอบงานที่เปิดใช้งาน</div>';
+  }
+
+  // === คำร้องล่าสุด ===
+  html += '<div class="card mb-4">';
+  html += '<h3 class="font-bold text-forest-800 mb-3">📝 สถานะคำร้อง</h3>';
+  if (d.requests && d.requests.length > 0) {
+    var recentReqs = d.requests.slice().reverse().slice(0, 5);
+    html += '<div class="space-y-2">';
+    recentReqs.forEach(function(r) {
+      var statusBadge = r.Status === 'Approved' ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">อนุมัติแล้ว</span>'
+        : r.Status === 'Rejected' ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">ไม่อนุมัติ</span>'
+        : '<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full animate-pulse">รอดำเนินการ</span>';
+      var typeBadge = r.Request_Type === 'Half_Day' ? '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">ครึ่งวัน</span>' : '<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">สลับวัน</span>';
+      html += '<div class="bg-gray-50 rounded-lg p-3">';
+      html += '<div class="flex justify-between items-center"><span class="text-sm font-medium">' + r.Original_Date + ' → ' + r.Requested_Date + '</span>';
+      html += '<div class="flex gap-1">' + typeBadge + statusBadge + '</div></div>';
+      html += '<p class="text-xs text-gray-500 mt-1">' + (r.Reason || '-') + '</p></div>';
+    });
+    html += '</div>';
+  } else {
+    html += '<p class="text-gray-400 text-sm text-center py-2">ยังไม่มีคำร้อง</p>';
+  }
+  html += '</div>';
+
+  // === ประวัติเข้างานทั้งหมด ===
+  html += '<div class="card">';
+  html += '<h3 class="font-bold text-forest-800 mb-3">🕐 ประวัติเข้างานทั้งหมด</h3>';
+  if (d.logs && d.logs.length > 0) {
+    var allLogs = d.logs.slice().reverse();
+    var totalLate = allLogs.filter(function(l) {
+      var t = l.Time_In ? l.Time_In.split(' ').pop() : '';
+      var p = t.split(':'); return (parseInt(p[0]||'0')*60 + parseInt(p[1]||'0')) > 495;
+    }).length;
+    var totalOnTime = allLogs.filter(function(l) { return l.Time_In; }).length - totalLate;
+    html += '<div class="flex flex-wrap gap-3 mb-3 text-xs">';
+    html += '<span class="bg-forest-100 text-forest-700 px-3 py-1 rounded-full font-medium">ทั้งหมด ' + allLogs.length + ' วัน</span>';
+    html += '<span class="bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">ตรงเวลา ' + totalOnTime + '</span>';
+    html += '<span class="bg-red-100 text-red-700 px-3 py-1 rounded-full font-medium">สาย ' + totalLate + '</span>';
+    html += '</div>';
+    html += '<div class="overflow-x-auto" style="max-height:400px;overflow-y:auto"><table class="w-full text-sm"><thead class="sticky top-0"><tr class="bg-forest-600 text-white">';
+    html += '<th class="px-3 py-2 text-left rounded-tl-lg">#</th><th class="px-3 py-2 text-left">วันที่</th><th class="px-3 py-2 text-left">เข้า</th><th class="px-3 py-2 text-left">ออก</th><th class="px-3 py-2 text-left rounded-tr-lg">สถานะ</th></tr></thead><tbody>';
+    allLogs.forEach(function(l, i) {
+      var timeIn = l.Time_In ? l.Time_In.split(' ').pop() : '-';
+      var timeOut = l.Time_Out ? l.Time_Out.split(' ').pop() : '-';
+      var timeInParts = timeIn.split(':');
+      var totalMin = parseInt(timeInParts[0] || '0') * 60 + parseInt(timeInParts[1] || '0');
+      var lateTag = totalMin > 495 ? '<span class="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">สาย</span>' : '<span class="text-xs bg-green-100 text-green-600 px-1.5 py-0.5 rounded">ตรงเวลา</span>';
+      var statusTag = l.Time_Out ? (l.Status === 'Late_Report' ? '<span class="text-xs bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded">รายงานล่าช้า</span>' : '<span class="text-xs bg-green-100 text-green-600 px-1.5 py-0.5 rounded">เสร็จสิ้น</span>') : '<span class="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">รอรายงาน</span>';
+      html += '<tr class="' + (i % 2 ? 'bg-gray-50' : '') + '">';
+      html += '<td class="px-3 py-2 text-gray-400">' + (i + 1) + '</td>';
+      html += '<td class="px-3 py-2 font-medium">' + l.Date + '</td>';
+      html += '<td class="px-3 py-2">' + timeIn + ' ' + lateTag + '</td>';
+      html += '<td class="px-3 py-2">' + timeOut + '</td>';
+      html += '<td class="px-3 py-2">' + statusTag + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  } else {
+    html += '<p class="text-gray-400 text-sm text-center py-2">ยังไม่มีประวัติเข้างาน</p>';
+  }
+  html += '</div>';
+
+  area.innerHTML = html;
 }
 
 // ==================== USER: CHECK IN ====================
