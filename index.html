@@ -48,6 +48,7 @@
     .calendar-day:hover { background: #dceedd; }
     .calendar-day.selected { background: #3d8b41; color: white; }
     .calendar-day.approved { background: #22c55e; color: white; }
+    .calendar-day.half-day { background: #60a5fa; color: white; flex-direction: column; line-height: 1; }
     .calendar-day.pending { background: #f59e0b; color: white; }
     .calendar-day.disabled { opacity: 0.3; cursor: not-allowed; }
     .calendar-day.today { border: 2px solid #3d8b41; font-weight: 700; }
@@ -403,7 +404,7 @@ function setupUserTabs() {
     { id: 'checkin', label: 'ลงเวลาเข้างาน', icon: '🕐' },
     { id: 'checkout', label: 'รายงานผล', icon: '📋' },
     { id: 'workplan', label: 'แผนวันทำงาน', icon: '📅' },
-    { id: 'schedule_req', label: 'ขอสลับวัน', icon: '🔄' }
+    { id: 'schedule_req', label: 'ขอเปลี่ยนแผน', icon: '🔄' }
   ];
   renderTabs(tabs);
 }
@@ -852,14 +853,17 @@ function renderWorkPlan(area) {
 
   // สรุปรอบงาน
   var cycle = d.activeCycle;
-  var totalApproved = d.plans.filter(function(p) { return p.Plan_Status === 'Approved' && p.CycleID === cycle.CycleID; }).length;
+  var approvedPlansInCycle = d.plans.filter(function(p) { return p.Plan_Status === 'Approved' && p.CycleID === cycle.CycleID; });
+  var totalApproved = approvedPlansInCycle.length;
+  var halfDayCount = approvedPlansInCycle.filter(function(p) { return p.Day_Type === 'Half'; }).length;
+  var approvedDayEquiv = totalApproved - (halfDayCount * 0.5);
   var totalPending = d.plans.filter(function(p) { return p.Plan_Status === 'Pending' && p.CycleID === cycle.CycleID; }).length;
   var totalCompleted = d.plans.filter(function(p) { return p.Completed_LogID && p.CycleID === cycle.CycleID; }).length;
 
   html += '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">';
   html += '<div class="stat-card"><p class="text-xs text-gray-500">รอบงาน</p><p class="text-sm font-semibold">' + cycle.Start_Date + '</p><p class="text-xs text-gray-400">ถึง ' + cycle.End_Date + '</p></div>';
   html += '<div class="stat-card"><p class="text-xs text-gray-500">ต้องทำงาน</p><p class="text-2xl font-bold text-forest-600">' + (cycle.Required_Work_Days || 30) + '</p><p class="text-xs text-gray-400">วัน</p></div>';
-  html += '<div class="stat-card"><p class="text-xs text-gray-500">อนุมัติแล้ว</p><p class="text-2xl font-bold text-green-600">' + totalApproved + '</p><p class="text-xs text-gray-400">วัน</p></div>';
+  html += '<div class="stat-card"><p class="text-xs text-gray-500">อนุมัติแล้ว</p><p class="text-2xl font-bold text-green-600">' + approvedDayEquiv + '</p><p class="text-xs text-gray-400">วัน' + (halfDayCount > 0 ? ' (ครึ่งวัน ' + halfDayCount + ')' : '') + '</p></div>';
   html += '<div class="stat-card"><p class="text-xs text-gray-500">รออนุมัติ</p><p class="text-2xl font-bold text-amber-600">' + totalPending + '</p><p class="text-xs text-gray-400">วัน</p></div>';
   html += '</div>';
 
@@ -872,7 +876,8 @@ function renderWorkPlan(area) {
     // ปฏิทินเลือกวัน
     html += '<div class="mb-4"><h3 class="font-semibold text-forest-700 mb-2">เลือกวันปฏิบัติงาน (เลือก 30 วัน)</h3>';
     html += '<p id="selectedCount" class="text-sm text-gray-500 mb-2">เลือกแล้ว: 0 / 30 วัน</p>';
-    html += renderCalendar(cycle.Start_Date, cycle.End_Date, d.approvedDates, d.plans.filter(function(p) { return p.Plan_Status === 'Pending'; }).map(function(p) { return p.Plan_Date; }));
+    var halfDayDates = approvedPlansInCycle.filter(function(p) { return p.Day_Type === 'Half'; }).map(function(p) { return p.Plan_Date; });
+    html += renderCalendar(cycle.Start_Date, cycle.End_Date, d.approvedDates, d.plans.filter(function(p) { return p.Plan_Status === 'Pending'; }).map(function(p) { return p.Plan_Date; }), halfDayDates);
     html += '<button onclick="submitWorkPlan()" class="btn-primary w-full text-center py-3 mt-4">ส่งแผนวันทำงาน</button>';
     html += '</div>';
   }
@@ -882,10 +887,11 @@ function renderWorkPlan(area) {
   var plansInCycle = d.plans.filter(function(p) { return p.CycleID === cycle.CycleID; });
   if (plansInCycle.length > 0) {
     html += '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-forest-600 text-white">';
-    html += '<th class="px-3 py-2 text-left rounded-tl-lg">วันที่</th><th class="px-3 py-2 text-left">สถานะ</th><th class="px-3 py-2 text-left rounded-tr-lg">หมายเหตุ</th></tr></thead><tbody>';
+    html += '<th class="px-3 py-2 text-left rounded-tl-lg">วันที่</th><th class="px-3 py-2 text-left">ประเภท</th><th class="px-3 py-2 text-left">สถานะ</th><th class="px-3 py-2 text-left rounded-tr-lg">หมายเหตุ</th></tr></thead><tbody>';
     plansInCycle.sort(function(a, b) { return a.Plan_Date > b.Plan_Date ? 1 : -1; }).forEach(function(p, i) {
       var badge = planStatusBadge(p.Plan_Status);
-      html += '<tr class="' + (i % 2 ? 'bg-gray-50' : '') + '"><td class="px-3 py-2">' + p.Plan_Date + '</td><td class="px-3 py-2">' + badge + '</td><td class="px-3 py-2 text-xs text-gray-500">' + (p.Notes || '-') + '</td></tr>';
+      var dayTypeBadge = p.Day_Type === 'Half' ? '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">ครึ่งวัน</span>' : '<span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">เต็มวัน</span>';
+      html += '<tr class="' + (i % 2 ? 'bg-gray-50' : '') + '"><td class="px-3 py-2">' + p.Plan_Date + '</td><td class="px-3 py-2">' + dayTypeBadge + '</td><td class="px-3 py-2">' + badge + '</td><td class="px-3 py-2 text-xs text-gray-500">' + (p.Notes || '-') + '</td></tr>';
     });
     html += '</tbody></table></div>';
   } else {
@@ -897,9 +903,10 @@ function renderWorkPlan(area) {
   APP.selectedPlanDates = [];
 }
 
-function renderCalendar(startDate, endDate, approvedDates, pendingDates) {
+function renderCalendar(startDate, endDate, approvedDates, pendingDates, halfDayDates) {
   var startParts = startDate.split('-');
   var endParts = endDate.split('-');
+  halfDayDates = halfDayDates || [];
   var html = '<div class="space-y-4">';
 
   var current = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, 1);
@@ -923,6 +930,7 @@ function renderCalendar(startDate, endDate, approvedDates, pendingDates) {
       var isInRange = dateStr >= startDate && dateStr <= endDate;
       var isApproved = approvedDates.indexOf(dateStr) !== -1;
       var isPending = pendingDates.indexOf(dateStr) !== -1;
+      var isHalfDay = halfDayDates.indexOf(dateStr) !== -1;
       var isToday = dateStr === APP.data.today;
       var isPast = dateStr < APP.data.today;
 
@@ -932,11 +940,13 @@ function renderCalendar(startDate, endDate, approvedDates, pendingDates) {
       if (isApproved) cls += ' approved';
       if (isPending) cls += ' pending';
       if (isToday) cls += ' today';
+      if (isHalfDay) cls += ' half-day';
       if (holidayName && !isApproved && !isPending) cls += ' holiday holiday-tooltip';
 
       var clickable = isInRange && !isPast && !isApproved && !isPending;
       var extraAttr = holidayName ? ' data-holiday="' + holidayName + '" title="' + holidayName + '"' : '';
-      html += '<div class="' + cls + '" ' + (clickable ? 'onclick="togglePlanDate(this, \'' + dateStr + '\')"' : '') + ' data-date="' + dateStr + '"' + extraAttr + '>' + d + '</div>';
+      var label = isHalfDay ? '<span class="text-[10px]">½</span>' : '' + d;
+      html += '<div class="' + cls + '" ' + (clickable ? 'onclick="togglePlanDate(this, \'' + dateStr + '\')"' : '') + ' data-date="' + dateStr + '"' + extraAttr + '>' + d + (isHalfDay ? '<span class="block text-[8px] leading-none">ครึ่งวัน</span>' : '') + '</div>';
     }
     html += '</div></div>';
     current = new Date(year, month + 1, 1);
@@ -946,6 +956,7 @@ function renderCalendar(startDate, endDate, approvedDates, pendingDates) {
   html += '<div class="flex items-center gap-1"><div class="w-4 h-4 rounded bg-green-500"></div> อนุมัติแล้ว</div>';
   html += '<div class="flex items-center gap-1"><div class="w-4 h-4 rounded bg-amber-500"></div> รออนุมัติ</div>';
   html += '<div class="flex items-center gap-1"><div class="w-4 h-4 rounded bg-forest-500"></div> เลือกใหม่</div>';
+  html += '<div class="flex items-center gap-1"><div class="w-4 h-4 rounded bg-blue-400"></div> ครึ่งวัน</div>';
   html += '<div class="flex items-center gap-1"><div class="w-4 h-4 rounded border-2 border-dashed border-red-400 bg-red-100"></div> วันหยุด/วันสำคัญ</div>';
   html += '</div></div>';
   return html;
@@ -1002,7 +1013,7 @@ function doSubmitPlan() {
 function renderScheduleRequest(area) {
   var d = APP.data;
   var html = '<div class="card">';
-  html += '<h2 class="text-xl font-bold text-forest-800 mb-4">🔄 ขอสลับวันปฏิบัติงาน</h2>';
+  html += '<h2 class="text-xl font-bold text-forest-800 mb-4">🔄 ขอเปลี่ยนแผนวันทำงาน</h2>';
 
   if (!d.activeCycle) {
     html += '<div class="bg-amber-50 border border-amber-300 rounded-xl p-4 text-center"><p class="text-amber-700">⚠️ ไม่มีรอบงานที่เปิดใช้งาน</p></div></div>';
@@ -1012,28 +1023,45 @@ function renderScheduleRequest(area) {
 
   var approvedPlans = d.plans.filter(function(p) { return p.Plan_Status === 'Approved' && p.CycleID === d.activeCycle.CycleID && !p.Completed_LogID; });
 
+  // ประเภทคำร้อง
   html += '<div class="space-y-4 mb-6">';
-  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">วันเดิม (ที่ต้องการเปลี่ยน)</label>';
-  html += '<select id="originalDate" class="input-field"><option value="">-- เลือกวันเดิม --</option>';
-  approvedPlans.forEach(function(p) { html += '<option value="' + p.Plan_Date + '">' + p.Plan_Date + '</option>'; });
+  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">ประเภทคำร้อง</label>';
+  html += '<div class="grid grid-cols-2 gap-2">';
+  html += '<button id="btnTypeSwap" onclick="setRequestType(\'Swap\')" class="py-2 px-3 rounded-xl text-sm font-medium border-2 border-forest-500 bg-forest-500 text-white transition">🔄 สลับวัน</button>';
+  html += '<button id="btnTypeHalf" onclick="setRequestType(\'Half_Day\')" class="py-2 px-3 rounded-xl text-sm font-medium border-2 border-gray-300 bg-white text-gray-600 transition">⏰ ขอทำครึ่งวัน</button>';
+  html += '</div></div>';
+
+  // วันเดิม
+  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1" id="labelOrigDate">วันเดิม (ที่ต้องการเปลี่ยน)</label>';
+  html += '<select id="originalDate" class="input-field"><option value="">-- เลือกวัน --</option>';
+  approvedPlans.forEach(function(p) {
+    var halfTag = (p.Day_Type === 'Half') ? ' [ครึ่งวัน]' : '';
+    html += '<option value="' + p.Plan_Date + '">' + p.Plan_Date + halfTag + '</option>';
+  });
   html += '</select></div>';
-  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">วันใหม่ (ที่ต้องการเปลี่ยนไป)</label>';
+
+  // วันใหม่ / วันชดเชย
+  html += '<div><label class="block text-sm font-medium text-forest-700 mb-1" id="labelNewDate">วันใหม่ (ที่ต้องการเปลี่ยนไป)</label>';
   html += '<input type="date" id="requestedDate" class="input-field" min="' + d.activeCycle.Start_Date + '" max="' + d.activeCycle.End_Date + '"></div>';
+
+  // เหตุผล
   html += '<div><label class="block text-sm font-medium text-forest-700 mb-1">เหตุผล</label>';
-  html += '<textarea id="changeReason" class="input-field h-24" placeholder="ระบุเหตุผลในการขอสลับวัน..."></textarea></div>';
-  html += '<button onclick="submitScheduleChange()" class="btn-primary w-full text-center py-3">ยื่นคำร้องขอสลับวัน</button>';
+  html += '<textarea id="changeReason" class="input-field h-24" placeholder="ระบุเหตุผล..."></textarea></div>';
+  html += '<button onclick="submitScheduleChange()" class="btn-primary w-full text-center py-3" id="btnSubmitReq">ยื่นคำร้องขอสลับวัน</button>';
   html += '</div>';
 
   // ประวัติคำร้อง
-  html += '<h3 class="font-semibold text-forest-700 mb-2">ประวัติคำร้อง</h3>';
+  html += '<h3 class="font-semibold text-forest-700 mb-2 mt-4">ประวัติคำร้อง</h3>';
   if (d.requests && d.requests.length > 0) {
     html += '<div class="space-y-2">';
     d.requests.slice().reverse().forEach(function(r) {
       var badge = r.Status === 'Approved' ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">อนุมัติแล้ว</span>'
         : r.Status === 'Rejected' ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">ไม่อนุมัติ</span>'
         : '<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">รอดำเนินการ</span>';
+      var typeBadge = r.Request_Type === 'Half_Day' ? '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full mr-1">ครึ่งวัน</span>' : '<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full mr-1">สลับวัน</span>';
       html += '<div class="bg-gray-50 rounded-lg p-3"><div class="flex justify-between items-center">';
-      html += '<span class="text-sm font-medium">' + r.Original_Date + ' → ' + r.Requested_Date + '</span>' + badge;
+      html += '<span class="text-sm font-medium">' + r.Original_Date + ' → ' + r.Requested_Date + '</span>';
+      html += '<div>' + typeBadge + badge + '</div>';
       html += '</div><p class="text-xs text-gray-500 mt-1">เหตุผล: ' + r.Reason + '</p></div>';
     });
     html += '</div>';
@@ -1043,23 +1071,51 @@ function renderScheduleRequest(area) {
 
   html += '</div>';
   area.innerHTML = html;
+
+  // ตั้งค่าเริ่มต้น
+  APP.scheduleRequestType = 'Swap';
+}
+
+function setRequestType(type) {
+  APP.scheduleRequestType = type;
+  var btnSwap = document.getElementById('btnTypeSwap');
+  var btnHalf = document.getElementById('btnTypeHalf');
+  var labelOrig = document.getElementById('labelOrigDate');
+  var labelNew = document.getElementById('labelNewDate');
+  var btnSubmit = document.getElementById('btnSubmitReq');
+
+  if (type === 'Half_Day') {
+    btnHalf.className = 'py-2 px-3 rounded-xl text-sm font-medium border-2 border-forest-500 bg-forest-500 text-white transition';
+    btnSwap.className = 'py-2 px-3 rounded-xl text-sm font-medium border-2 border-gray-300 bg-white text-gray-600 transition';
+    labelOrig.textContent = 'วันที่ต้องการทำครึ่งวัน';
+    labelNew.textContent = 'วันชดเชย (อีกครึ่งวัน)';
+    btnSubmit.textContent = 'ยื่นคำร้องขอทำครึ่งวัน';
+  } else {
+    btnSwap.className = 'py-2 px-3 rounded-xl text-sm font-medium border-2 border-forest-500 bg-forest-500 text-white transition';
+    btnHalf.className = 'py-2 px-3 rounded-xl text-sm font-medium border-2 border-gray-300 bg-white text-gray-600 transition';
+    labelOrig.textContent = 'วันเดิม (ที่ต้องการเปลี่ยน)';
+    labelNew.textContent = 'วันใหม่ (ที่ต้องการเปลี่ยนไป)';
+    btnSubmit.textContent = 'ยื่นคำร้องขอสลับวัน';
+  }
 }
 
 function submitScheduleChange() {
   var orig = document.getElementById('originalDate').value;
   var req = document.getElementById('requestedDate').value;
   var reason = document.getElementById('changeReason').value.trim();
+  var type = APP.scheduleRequestType || 'Swap';
   if (!orig || !req || !reason) { Swal.fire('แจ้งเตือน', 'กรุณากรอกข้อมูลให้ครบถ้วน', 'warning'); return; }
 
+  var actionText = type === 'Half_Day' ? 'ขอทำครึ่งวัน' : 'ขอสลับวัน';
   Swal.fire({ title: 'กำลังยื่นคำร้อง...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
   google.script.run.withSuccessHandler(function(res) {
     if (res.success) {
-      Swal.fire('สำเร็จ!', 'ยื่นคำร้องขอสลับวันเรียบร้อย', 'success');
+      Swal.fire('สำเร็จ!', 'ยื่นคำร้อง' + actionText + 'เรียบร้อย', 'success');
       loadUserData();
     } else {
       Swal.fire('ไม่สำเร็จ', res.message, 'error');
     }
-  }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).createScheduleChangeRequest(APP.token, APP.data.activeCycle.CycleID, orig, req, reason);
+  }).withFailureHandler(function(err) { Swal.fire('ข้อผิดพลาด', err.message, 'error'); }).createScheduleChangeRequest(APP.token, APP.data.activeCycle.CycleID, orig, req, reason, type);
 }
 
 // ==================== ADMIN: USER MANAGEMENT ====================
@@ -1532,16 +1588,19 @@ function approveSubmission(submissionId, status) {
 // ==================== ADMIN: APPROVE REQUESTS ====================
 function renderApproveRequests(area) {
   var d = APP.data;
-  var html = '<h2 class="text-xl font-bold text-forest-800 mb-4">📝 อนุมัติคำร้องขอสลับวัน</h2>';
+  var html = '<h2 class="text-xl font-bold text-forest-800 mb-4">📝 อนุมัติคำร้องเปลี่ยนแผน</h2>';
 
   if (d.pendingRequests.length === 0) {
     html += '<div class="card text-center text-gray-500 py-8">ไม่มีคำร้องรอดำเนินการ</div>';
   } else {
     d.pendingRequests.forEach(function(r) {
+      var isHalf = r.Request_Type === 'Half_Day';
+      var typeBadge = isHalf ? '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">⏰ ครึ่งวัน</span>' : '<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">🔄 สลับวัน</span>';
+      var dateLabel = isHalf ? ('<span class="text-amber-600">' + r.Original_Date + ' (ครึ่งวัน)</span> + ชดเชย <span class="text-green-600">' + r.Requested_Date + '</span>') : ('<span class="text-red-500">' + r.Original_Date + '</span> → <span class="text-green-600">' + r.Requested_Date + '</span>');
       html += '<div class="card mb-4">';
       html += '<div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">';
-      html += '<div><h3 class="font-semibold text-forest-700">' + r.Name + '</h3>';
-      html += '<p class="text-sm mt-1"><span class="text-red-500">' + r.Original_Date + '</span> → <span class="text-green-600">' + r.Requested_Date + '</span></p>';
+      html += '<div><div class="flex items-center gap-2 mb-1"><h3 class="font-semibold text-forest-700">' + r.Name + '</h3>' + typeBadge + '</div>';
+      html += '<p class="text-sm mt-1">' + dateLabel + '</p>';
       html += '<p class="text-xs text-gray-500 mt-1">เหตุผล: ' + r.Reason + '</p></div>';
       html += '<div class="flex gap-2">';
       html += '<button onclick="approveRequest(\'' + r.ReqID + '\', \'Approved\')" class="btn-primary btn-sm">อนุมัติ</button>';
@@ -1556,9 +1615,11 @@ function renderApproveRequests(area) {
     html += '<div class="card mt-4"><h3 class="font-semibold text-forest-700 mb-3">ประวัติคำร้อง</h3>';
     html += '<div class="space-y-2">';
     allReqs.slice().reverse().forEach(function(r) {
-      var badge = r.Status === 'Approved' ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">อนุมัติแล้ว</span>' : '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">ไม่อนุมัติ</span>';
+      var statusBadge = r.Status === 'Approved' ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">อนุมัติแล้ว</span>' : '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">ไม่อนุมัติ</span>';
+      var typeBadge = r.Request_Type === 'Half_Day' ? '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full mr-1">ครึ่งวัน</span>' : '<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full mr-1">สลับวัน</span>';
       html += '<div class="bg-gray-50 rounded-lg p-3"><div class="flex justify-between items-center">';
-      html += '<span class="text-sm"><strong>' + r.Name + '</strong> | ' + r.Original_Date + ' → ' + r.Requested_Date + '</span>' + badge;
+      html += '<span class="text-sm"><strong>' + r.Name + '</strong> | ' + r.Original_Date + ' → ' + r.Requested_Date + '</span>';
+      html += '<div>' + typeBadge + statusBadge + '</div>';
       html += '</div></div>';
     });
     html += '</div></div>';
@@ -1570,7 +1631,7 @@ function renderApproveRequests(area) {
 function approveRequest(reqId, status) {
   var action = status === 'Approved' ? 'อนุมัติ' : 'ไม่อนุมัติ';
   Swal.fire({
-    title: action + 'คำร้องขอสลับวัน?',
+    title: action + 'คำร้อง?',
     icon: 'question',
     showCancelButton: true,
     confirmButtonColor: status === 'Approved' ? '#3d8b41' : '#dc2626',

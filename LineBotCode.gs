@@ -84,16 +84,17 @@ function buildMorningReport_() {
   // คนที่มีแผนวันนี้ (Approved) — รวมแผนที่มาจากการสลับวัน (Name อาจว่าง)
   var todayPlans = plans.filter(function(p) { return p.Plan_Date === today && p.Plan_Status === 'Approved'; });
   var plannedNames = [];
+  var halfDayNames = [];
   todayPlans.forEach(function(p) {
     var name = p.Name;
     if (!name || name === '') {
-      // WorkPlan จากการสลับวันอาจไม่มี Name → ดึงจาก Users โดยใช้ UserID
       for (var k = 0; k < users.length; k++) {
         if (users[k].ID === p.UserID) { name = users[k].Name; break; }
       }
     }
     if (name && plannedNames.indexOf(name) === -1) {
       plannedNames.push(name);
+      if (p.Day_Type === 'Half') { halfDayNames.push(name); }
     }
   });
 
@@ -144,6 +145,13 @@ function buildMorningReport_() {
     });
   }
 
+  if (halfDayNames.length > 0) {
+    msg += '\n⏰ ปฏิบัติงานครึ่งวัน (' + halfDayNames.length + ' คน):\n';
+    halfDayNames.forEach(function(name, i) {
+      msg += '   ' + (i + 1) + '. ' + name + '\n';
+    });
+  }
+
   if (notCheckedIn.length > 0) {
     msg += '\n⚠️ มีแผนแต่ยังไม่เช็คชื่อ (' + notCheckedIn.length + ' คน):\n';
     notCheckedIn.forEach(function(name, i) {
@@ -162,12 +170,13 @@ function buildMorningReport_() {
   var schedReqs = getSheetData_(ss, 'ScheduleRequests');
   var pendingReqs = schedReqs.filter(function(r) { return r.Status === 'Pending'; });
   if (pendingReqs.length > 0) {
-    msg += '\n📨 คำขอเปลี่ยนวันทำงานรออนุมัติ (' + pendingReqs.length + ' รายการ):\n';
+    msg += '\n📨 คำขอเปลี่ยนแผนรออนุมัติ (' + pendingReqs.length + ' รายการ):\n';
     pendingReqs.forEach(function(r, i) {
-      msg += '   ' + (i + 1) + '. ' + r.Name + ' (' + r.Original_Date + ' → ' + r.Requested_Date + ')\n';
+      var typeLabel = r.Request_Type === 'Half_Day' ? 'ครึ่งวัน' : 'สลับวัน';
+      msg += '   ' + (i + 1) + '. ' + r.Name + ' [' + typeLabel + '] (' + r.Original_Date + ' → ' + r.Requested_Date + ')\n';
     });
   } else {
-    msg += '\n✅ ไม่มีคำขอเปลี่ยนวันทำงานรออนุมัติ';
+    msg += '\n✅ ไม่มีคำขอเปลี่ยนแผนรออนุมัติ';
   }
 
   return msg.trim();
@@ -228,12 +237,13 @@ function buildEveningReport_() {
   var schedReqs = getSheetData_(ss, 'ScheduleRequests');
   var pendingReqs = schedReqs.filter(function(r) { return r.Status === 'Pending'; });
   if (pendingReqs.length > 0) {
-    msg += '\n\n📨 คำขอเปลี่ยนวันทำงานรออนุมัติ (' + pendingReqs.length + ' รายการ):\n';
+    msg += '\n\n📨 คำขอเปลี่ยนแผนรออนุมัติ (' + pendingReqs.length + ' รายการ):\n';
     pendingReqs.forEach(function(r, i) {
-      msg += '   ' + (i + 1) + '. ' + r.Name + ' (' + r.Original_Date + ' → ' + r.Requested_Date + ')\n';
+      var typeLabel = r.Request_Type === 'Half_Day' ? 'ครึ่งวัน' : 'สลับวัน';
+      msg += '   ' + (i + 1) + '. ' + r.Name + ' [' + typeLabel + '] (' + r.Original_Date + ' → ' + r.Requested_Date + ')\n';
     });
   } else {
-    msg += '\n\n✅ ไม่มีคำขอเปลี่ยนวันทำงานรออนุมัติ';
+    msg += '\n\n✅ ไม่มีคำขอเปลี่ยนแผนรออนุมัติ';
   }
 
   return msg.trim();

@@ -9,8 +9,8 @@ var CONFIG = {
     Users:             ['ID', 'Username', 'Password', 'Name', 'Role', 'Status'],
     AttendanceLog:     ['LogID', 'Date', 'Name', 'Time_In', 'Time_Out', 'Task_Report', 'Photo_URL', 'Status', 'Latitude', 'Longitude', 'Distance_m', 'Selfie_URL'],
     WorkCycles:        ['CycleID', 'UserID', 'Name', 'Start_Date', 'End_Date', 'Required_Work_Days', 'Status'],
-    WorkPlans:         ['PlanID', 'Submission_ID', 'CycleID', 'UserID', 'Name', 'Plan_Date', 'Plan_Status', 'Notes', 'Completed_LogID', 'Created_At', 'Submitted_At', 'Approved_At'],
-    ScheduleRequests:  ['ReqID', 'CycleID', 'UserID', 'Name', 'Original_Date', 'Requested_Date', 'Reason', 'Status', 'Created_At', 'Decision_At']
+    WorkPlans:         ['PlanID', 'Submission_ID', 'CycleID', 'UserID', 'Name', 'Plan_Date', 'Plan_Status', 'Notes', 'Completed_LogID', 'Created_At', 'Submitted_At', 'Approved_At', 'Day_Type'],
+    ScheduleRequests:  ['ReqID', 'CycleID', 'UserID', 'Name', 'Original_Date', 'Requested_Date', 'Reason', 'Status', 'Created_At', 'Decision_At', 'Request_Type']
   }
 };
 
@@ -315,7 +315,7 @@ function createWorkPlan(token, cycleId, dates) {
   var rows = [];
   dates.forEach(function(date, idx) {
     var planId = 'PLN' + new Date().getTime() + '' + idx;
-    rows.push([planId, submissionId, cycleId, user.id, user.name, date, 'Pending', '', '', now, now, '']);
+    rows.push([planId, submissionId, cycleId, user.id, user.name, date, 'Pending', '', '', now, now, '', 'Full']);
   });
   if (rows.length > 0) {
     var lastRow = sheet.getLastRow();
@@ -349,13 +349,14 @@ function updateWorkPlanApprovalStatus(token, submissionId, newStatus) {
 }
 
 // ==================== SCHEDULE CHANGE REQUESTS ====================
-function createScheduleChangeRequest(token, cycleId, originalDate, requestedDate, reason) {
+function createScheduleChangeRequest(token, cycleId, originalDate, requestedDate, reason, requestType) {
   var user = validateSession_(token);
   var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   var sheet = ss.getSheetByName('ScheduleRequests');
   var reqId = 'REQ' + new Date().getTime();
   var now = formatDateTime_(new Date());
-  sheet.appendRow([reqId, cycleId, user.id, user.name, originalDate, requestedDate, reason, 'Pending', now, '']);
+  var type = requestType || 'Swap';
+  sheet.appendRow([reqId, cycleId, user.id, user.name, originalDate, requestedDate, reason, 'Pending', now, '', type]);
   return { success: true, reqId: reqId };
 }
 
@@ -378,12 +379,14 @@ function updateScheduleRequestStatus(token, reqId, newStatus) {
   var now = formatDateTime_(new Date());
 
   var nameIdx = reqHeaders.indexOf('Name');
+  var reqTypeIdx = reqHeaders.indexOf('Request_Type');
   var request = null;
   for (var i = 1; i < reqData.length; i++) {
     if (reqData[i][reqIdIdx] === reqId) {
       reqSheet.getRange(i + 1, statusIdx + 1).setValue(newStatus);
       reqSheet.getRange(i + 1, decisionIdx + 1).setValue(now);
-      request = { originalDate: reqData[i][origDateIdx], requestedDate: reqData[i][newDateIdx], userId: reqData[i][userIdIdx], cycleId: reqData[i][cycleIdIdx], name: reqData[i][nameIdx] };
+      var reqType = reqTypeIdx >= 0 ? (reqData[i][reqTypeIdx] || 'Swap') : 'Swap';
+      request = { originalDate: reqData[i][origDateIdx], requestedDate: reqData[i][newDateIdx], userId: reqData[i][userIdIdx], cycleId: reqData[i][cycleIdIdx], name: reqData[i][nameIdx], type: reqType };
       break;
     }
   }
@@ -397,18 +400,35 @@ function updateScheduleRequestStatus(token, reqId, newStatus) {
     var pCycleIdIdx = planHeaders.indexOf('CycleID');
     var pDateIdx = planHeaders.indexOf('Plan_Date');
     var pStatusIdx = planHeaders.indexOf('Plan_Status');
+    var pDayTypeIdx = planHeaders.indexOf('Day_Type');
 
-    for (var j = 1; j < planData.length; j++) {
-      if (planData[j][pUserIdIdx] === request.userId && planData[j][pCycleIdIdx] === request.cycleId) {
-        // เปลี่ยนวันเดิมเป็น Swapped_Out
-        if (planData[j][pDateIdx] === request.originalDate && planData[j][pStatusIdx] === 'Approved') {
-          planSheet.getRange(j + 1, pStatusIdx + 1).setValue('Swapped_Out');
+    if (request.type === 'Half_Day') {
+      // ===== ครึ่งวัน: เปลี่ยน Day_Type ของวันเดิมเป็น Half + เพิ่มวันชดเชยเป็น Half =====
+      for (var j = 1; j < planData.length; j++) {
+        if (planData[j][pUserIdIdx] === request.userId && planData[j][pCycleIdIdx] === request.cycleId) {
+          if (planData[j][pDateIdx] === request.originalDate && planData[j][pStatusIdx] === 'Approved') {
+            if (pDayTypeIdx >= 0) {
+              planSheet.getRange(j + 1, pDayTypeIdx + 1).setValue('Half');
+            }
+          }
         }
       }
+      // เพิ่มวันชดเชย (ครึ่งวัน)
+      var newPlanId = 'PLN' + new Date().getTime();
+      planSheet.appendRow([newPlanId, '', request.cycleId, request.userId, request.name, request.requestedDate, 'Approved', 'ชดเชยครึ่งวันจาก ' + request.originalDate, '', now, '', now, 'Half']);
+    } else {
+      // ===== สลับวัน: เปลี่ยนวันเดิมเป็น Swapped_Out + เพิ่มวันใหม่เป็น Full =====
+      for (var j = 1; j < planData.length; j++) {
+        if (planData[j][pUserIdIdx] === request.userId && planData[j][pCycleIdIdx] === request.cycleId) {
+          if (planData[j][pDateIdx] === request.originalDate && planData[j][pStatusIdx] === 'Approved') {
+            planSheet.getRange(j + 1, pStatusIdx + 1).setValue('Swapped_Out');
+          }
+        }
+      }
+      // เพิ่มวันใหม่ (เต็มวัน)
+      var newPlanId = 'PLN' + new Date().getTime();
+      planSheet.appendRow([newPlanId, '', request.cycleId, request.userId, request.name, request.requestedDate, 'Approved', 'สลับจากวันที่ ' + request.originalDate, '', now, '', now, 'Full']);
     }
-    // เพิ่มวันใหม่
-    var newPlanId = 'PLN' + new Date().getTime();
-    planSheet.appendRow([newPlanId, '', request.cycleId, request.userId, request.name, request.requestedDate, 'Approved', 'สลับจากวันที่ ' + request.originalDate, '', now, '', now]);
   }
 
   return { success: true };
