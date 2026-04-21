@@ -196,7 +196,8 @@ function getAdminAppData(token) {
   var logs = getSheetData_(ss, 'AttendanceLog');
   var requests = getSheetData_(ss, 'ScheduleRequests');
 
-  var today = formatDate_(new Date());
+  var now = new Date();
+  var today = formatDate_(now);
   var todayLogs = logs.filter(function(l) { return l.Date === today; });
 
   // กลุ่มแผนรออนุมัติ ตาม Submission_ID
@@ -242,7 +243,200 @@ function getAdminAppData(token) {
 
   // รายชื่อผู้มาปฏิบัติงานวันนี้
   var todayAttendanceList = todayLogs.map(function(l) {
-    return { name: l.Name, timeIn: l.Time_In, status: l.Status, distance: l.Distance_m || '-', selfieUrl: l.Selfie_URL || '' };
+    return { name: l.Name, timeIn: l.Time_In, timeOut: l.Time_Out || '', status: l.Status, distance: l.Distance_m || '-', selfieUrl: l.Selfie_URL || '' };
+  });
+
+  // ===== NEW: จำนวนคนที่ต้องมาวันนี้ (มีแผน Approved วันนี้) =====
+  var todayExpectedNames = {};
+  plans.forEach(function(p) {
+    if (p.Plan_Date === today && p.Plan_Status === 'Approved') {
+      todayExpectedNames[p.Name] = true;
+    }
+  });
+  var todayExpectedCount = Object.keys(todayExpectedNames).length;
+
+  // ===== NEW: เวลาเช็คอินเฉลี่ย / เร็วสุด / ช้าสุด วันนี้ =====
+  var todayAvgTime = null;
+  if (todayLogs.length > 0) {
+    var timeMinutes = [];
+    var earliest = 9999, latest = 0, earliestName = '', latestName = '';
+    todayLogs.forEach(function(l) {
+      if (l.Time_In) {
+        var timePart = String(l.Time_In).split(' ').pop();
+        var tp = timePart.split(':');
+        var mins = parseInt(tp[0]) * 60 + parseInt(tp[1]);
+        timeMinutes.push(mins);
+        if (mins < earliest) { earliest = mins; earliestName = l.Name; }
+        if (mins > latest) { latest = mins; latestName = l.Name; }
+      }
+    });
+    if (timeMinutes.length > 0) {
+      var avgMins = Math.round(timeMinutes.reduce(function(a, b) { return a + b; }, 0) / timeMinutes.length);
+      todayAvgTime = {
+        avg: String(Math.floor(avgMins / 60)).padStart(2, '0') + ':' + String(avgMins % 60).padStart(2, '0'),
+        earliest: String(Math.floor(earliest / 60)).padStart(2, '0') + ':' + String(earliest % 60).padStart(2, '0'),
+        earliestName: earliestName,
+        latest: String(Math.floor(latest / 60)).padStart(2, '0') + ':' + String(latest % 60).padStart(2, '0'),
+        latestName: latestName
+      };
+    }
+  }
+
+  // ===== NEW: สถิติรายวัน 14 วันล่าสุด =====
+  var dailyStats = [];
+  for (var di = 13; di >= 0; di--) {
+    var d = new Date(now);
+    d.setDate(d.getDate() - di);
+    var ds = formatDate_(d);
+    var dayLogs = logs.filter(function(l) { return l.Date === ds; });
+    var dayOnTime = dayLogs.filter(function(l) { return l.Status === 'On_Time' || l.Status === 'Completed'; }).length;
+    var dayLate = dayLogs.filter(function(l) { return l.Status === 'Late' || l.Status === 'Late_Report'; }).length;
+    dailyStats.push({ date: ds, total: dayLogs.length, onTime: dayOnTime, late: dayLate });
+  }
+
+  // ===== NEW: สถิติตามวันในสัปดาห์ (0=อาทิตย์ ... 6=เสาร์) =====
+  var weekdayStats = [
+    { day: 'อา.', onTime: 0, late: 0, total: 0 },
+    { day: 'จ.', onTime: 0, late: 0, total: 0 },
+    { day: 'อ.', onTime: 0, late: 0, total: 0 },
+    { day: 'พ.', onTime: 0, late: 0, total: 0 },
+    { day: 'พฤ.', onTime: 0, late: 0, total: 0 },
+    { day: 'ศ.', onTime: 0, late: 0, total: 0 },
+    { day: 'ส.', onTime: 0, late: 0, total: 0 }
+  ];
+  logs.forEach(function(l) {
+    if (l.Date) {
+      var logDate = new Date(l.Date);
+      var dow = logDate.getDay();
+      weekdayStats[dow].total++;
+      if (l.Status === 'Late' || l.Status === 'Late_Report') {
+        weekdayStats[dow].late++;
+      } else {
+        weekdayStats[dow].onTime++;
+      }
+    }
+  });
+
+  // ===== NEW: สถิติรายบุคคล =====
+  var perUserStats = [];
+  activeUsers.forEach(function(u) {
+    var uLogs = logs.filter(function(l) { return l.Name === u.Name; });
+    var uOnTime = uLogs.filter(function(l) { return l.Status === 'On_Time' || l.Status === 'Completed'; }).length;
+    var uLate = uLogs.filter(function(l) { return l.Status === 'Late' || l.Status === 'Late_Report'; }).length;
+    var uTotal = uLogs.length;
+    var rate = uTotal > 0 ? Math.round((uOnTime / uTotal) * 100) : 0;
+
+    var avgMin = 0;
+    var avgTimeStr = '-';
+    if (uTotal > 0) {
+      var minsArr = [];
+      uLogs.forEach(function(l) {
+        if (l.Time_In) {
+          var tp = String(l.Time_In).split(' ').pop().split(':');
+          minsArr.push(parseInt(tp[0]) * 60 + parseInt(tp[1]));
+        }
+      });
+      if (minsArr.length > 0) {
+        avgMin = Math.round(minsArr.reduce(function(a, b) { return a + b; }, 0) / minsArr.length);
+        avgTimeStr = String(Math.floor(avgMin / 60)).padStart(2, '0') + ':' + String(avgMin % 60).padStart(2, '0');
+      }
+    }
+
+    perUserStats.push({
+      name: u.Name,
+      username: u.Username,
+      totalDays: uTotal,
+      onTime: uOnTime,
+      late: uLate,
+      rate: rate,
+      avgCheckIn: avgTimeStr
+    });
+  });
+  perUserStats.sort(function(a, b) { return b.rate - a.rate || b.totalDays - a.totalDays; });
+
+  // ===== NEW: ความคืบหน้ารอบงาน =====
+  var activeCycles = cycles.filter(function(c) { return c.Status === 'Active'; });
+  var cycleProgress = [];
+  activeCycles.forEach(function(c) {
+    var cPlansApproved = plans.filter(function(p) { return p.CycleID === c.CycleID && p.Plan_Status === 'Approved'; }).length;
+    var cLogsCompleted = logs.filter(function(l) {
+      return l.Name === c.Name && l.Date >= c.Start_Date && l.Date <= c.End_Date && l.Time_In;
+    }).length;
+    var required = parseInt(c.Required_Work_Days) || 30;
+    var totalDaysInCycle = Math.max(1, Math.round((new Date(c.End_Date) - new Date(c.Start_Date)) / 86400000));
+    var elapsedDays = Math.max(0, Math.round((now - new Date(c.Start_Date)) / 86400000));
+    var progressPct = Math.min(100, Math.round((cLogsCompleted / required) * 100));
+    var remainDays = Math.max(0, Math.round((new Date(c.End_Date) - now) / 86400000));
+    var expectedByNow = required > 0 ? Math.round((elapsedDays / totalDaysInCycle) * required) : 0;
+    var behindSchedule = cLogsCompleted < expectedByNow;
+
+    cycleProgress.push({
+      name: c.Name,
+      cycleId: c.CycleID,
+      start: c.Start_Date,
+      end: c.End_Date,
+      required: required,
+      approved: cPlansApproved,
+      completed: cLogsCompleted,
+      progressPct: progressPct,
+      remainDays: remainDays,
+      behindSchedule: behindSchedule
+    });
+  });
+
+  // ===== NEW: เปรียบเทียบสัปดาห์นี้ vs สัปดาห์ก่อน =====
+  var thisWeekStart = new Date(now);
+  thisWeekStart.setDate(thisWeekStart.getDate() - thisWeekStart.getDay() + 1);
+  var lastWeekStart = new Date(thisWeekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+  var thisWeekStartStr = formatDate_(thisWeekStart);
+  var lastWeekStartStr = formatDate_(lastWeekStart);
+  var lastWeekEndStr = formatDate_(new Date(thisWeekStart.getTime() - 86400000));
+
+  var thisWeekLogs = logs.filter(function(l) { return l.Date >= thisWeekStartStr && l.Date <= today; });
+  var lastWeekLogs = logs.filter(function(l) { return l.Date >= lastWeekStartStr && l.Date <= lastWeekEndStr; });
+
+  var thisWeekOnTime = thisWeekLogs.filter(function(l) { return l.Status === 'On_Time' || l.Status === 'Completed'; }).length;
+  var thisWeekLate = thisWeekLogs.filter(function(l) { return l.Status === 'Late' || l.Status === 'Late_Report'; }).length;
+  var lastWeekOnTime = lastWeekLogs.filter(function(l) { return l.Status === 'On_Time' || l.Status === 'Completed'; }).length;
+  var lastWeekLate = lastWeekLogs.filter(function(l) { return l.Status === 'Late' || l.Status === 'Late_Report'; }).length;
+
+  var weekComparison = {
+    thisWeek: { total: thisWeekLogs.length, onTime: thisWeekOnTime, late: thisWeekLate },
+    lastWeek: { total: lastWeekLogs.length, onTime: lastWeekOnTime, late: lastWeekLate },
+    totalDiff: thisWeekLogs.length - lastWeekLogs.length,
+    onTimeDiff: thisWeekOnTime - lastWeekOnTime,
+    lateDiff: thisWeekLate - lastWeekLate
+  };
+
+  // ===== NEW: Activity Feed (10 กิจกรรมล่าสุด) =====
+  var activities = [];
+  logs.forEach(function(l) {
+    if (l.Time_In) {
+      var timeStr = String(l.Time_In).split(' ').pop();
+      activities.push({ type: 'checkin', name: l.Name, date: l.Date, time: timeStr, detail: l.Status === 'Late' ? 'มาสาย' : 'ตรงเวลา' });
+    }
+    if (l.Time_Out) {
+      var timeStr2 = String(l.Time_Out).split(' ').pop();
+      activities.push({ type: 'checkout', name: l.Name, date: l.Date, time: timeStr2, detail: 'รายงานผล' });
+    }
+  });
+  requests.forEach(function(r) {
+    activities.push({ type: 'request', name: r.Name, date: r.Created_At ? r.Created_At.substring(0, 10) : '', time: r.Created_At ? r.Created_At.substring(11, 16) : '', detail: (r.Request_Type === 'Half_Day' ? 'ขอลาครึ่งวัน' : 'ขอสลับวัน') + ' (' + r.Status + ')' });
+  });
+  plans.filter(function(p) { return p.Submitted_At; }).forEach(function(p) {
+    if (!activities.some(function(a) { return a.type === 'plan' && a.detail === p.Submission_ID; })) {
+      activities.push({ type: 'plan', name: p.Name, date: p.Submitted_At ? p.Submitted_At.substring(0, 10) : '', time: p.Submitted_At ? p.Submitted_At.substring(11, 16) : '', detail: p.Submission_ID });
+    }
+  });
+  activities.sort(function(a, b) {
+    var da = a.date + ' ' + a.time;
+    var db = b.date + ' ' + b.time;
+    return da > db ? -1 : da < db ? 1 : 0;
+  });
+  var recentActivity = activities.slice(0, 10).map(function(a) {
+    var icon = a.type === 'checkin' ? 'checkin' : a.type === 'checkout' ? 'checkout' : a.type === 'request' ? 'request' : 'plan';
+    return { icon: icon, name: a.name, date: a.date, time: a.time, detail: a.detail };
   });
 
   return {
@@ -253,10 +447,12 @@ function getAdminAppData(token) {
     requests: requests,
     today: today,
     todayAttendanceCount: todayLogs.length,
+    todayExpectedCount: todayExpectedCount,
     todayOnTime: todayOnTime,
     todayLate: todayLate,
     todayAttendanceList: todayAttendanceList,
-    activeCyclesCount: cycles.filter(function(c) { return c.Status === 'Active'; }).length,
+    todayAvgTime: todayAvgTime,
+    activeCyclesCount: activeCycles.length,
     activeUsersCount: activeUsers.length,
     pendingUsersCount: pendingUsers.length,
     unregUsersCount: unregUsers.length,
@@ -269,7 +465,13 @@ function getAdminAppData(token) {
     pendingRequests: pendingRequests,
     monthlyStats: monthlyStats,
     monthlyOnTime: monthlyOnTime,
-    monthlyLate: monthlyLate
+    monthlyLate: monthlyLate,
+    dailyStats: dailyStats,
+    weekdayStats: weekdayStats,
+    perUserStats: perUserStats,
+    cycleProgress: cycleProgress,
+    weekComparison: weekComparison,
+    recentActivity: recentActivity
   };
 }
 
