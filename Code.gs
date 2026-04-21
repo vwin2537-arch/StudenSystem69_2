@@ -377,12 +377,13 @@ function updateScheduleRequestStatus(token, reqId, newStatus) {
   var cycleIdIdx = reqHeaders.indexOf('CycleID');
   var now = formatDateTime_(new Date());
 
+  var nameIdx = reqHeaders.indexOf('Name');
   var request = null;
   for (var i = 1; i < reqData.length; i++) {
     if (reqData[i][reqIdIdx] === reqId) {
       reqSheet.getRange(i + 1, statusIdx + 1).setValue(newStatus);
       reqSheet.getRange(i + 1, decisionIdx + 1).setValue(now);
-      request = { originalDate: reqData[i][origDateIdx], requestedDate: reqData[i][newDateIdx], userId: reqData[i][userIdIdx], cycleId: reqData[i][cycleIdIdx] };
+      request = { originalDate: reqData[i][origDateIdx], requestedDate: reqData[i][newDateIdx], userId: reqData[i][userIdIdx], cycleId: reqData[i][cycleIdIdx], name: reqData[i][nameIdx] };
       break;
     }
   }
@@ -407,7 +408,7 @@ function updateScheduleRequestStatus(token, reqId, newStatus) {
     }
     // เพิ่มวันใหม่
     var newPlanId = 'PLN' + new Date().getTime();
-    planSheet.appendRow([newPlanId, '', request.cycleId, request.userId, '', request.requestedDate, 'Approved', 'สลับจากวันที่ ' + request.originalDate, '', now, '', now]);
+    planSheet.appendRow([newPlanId, '', request.cycleId, request.userId, request.name, request.requestedDate, 'Approved', 'สลับจากวันที่ ' + request.originalDate, '', now, '', now]);
   }
 
   return { success: true };
