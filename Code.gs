@@ -317,42 +317,103 @@ function getAdminAppData(token) {
     }
   });
 
-  // ===== NEW: สถิติรายบุคคล =====
+  // ===== Engagement Score — สถิติรายบุคคล =====
+  // คะแนนต่อวัน (เต็ม 100):
+  //   มาทำงาน (มี check-in)       = 30 คะแนน
+  //   เช็คอินตรงเวลา (≤ 08:15)    = 30 คะแนน
+  //   ส่งรายงาน (มี Time_Out)      = 20 คะแนน
+  //   ส่งรายงานตรงเวลา (≤ 17:00)  = 20 คะแนน
+  //   ขาดงาน (มีแผนแต่ไม่มา)      =  0 คะแนน
+  // engagementScore = (คะแนนรวม / (วันที่มีแผน × 100)) × 100
   var perUserStats = [];
   activeUsers.forEach(function(u) {
     var uLogs = logs.filter(function(l) { return l.Name === u.Name; });
-    var uOnTime = uLogs.filter(function(l) { return l.Status === 'On_Time' || l.Status === 'Completed'; }).length;
-    var uLate = uLogs.filter(function(l) { return l.Status === 'Late' || l.Status === 'Late_Report'; }).length;
-    var uTotal = uLogs.length;
-    var rate = uTotal > 0 ? Math.round((uOnTime / uTotal) * 100) : 0;
 
-    var avgMin = 0;
-    var avgTimeStr = '-';
-    if (uTotal > 0) {
-      var minsArr = [];
-      uLogs.forEach(function(l) {
-        if (l.Time_In) {
-          var tp = String(l.Time_In).split(' ').pop().split(':');
-          minsArr.push(parseInt(tp[0]) * 60 + parseInt(tp[1]));
+    // วันที่มีแผน Approved ถึงวันนี้ (ไม่นับวันอนาคต, ไม่นับ Swapped_Out)
+    var uPlans = plans.filter(function(p) {
+      return p.UserID === u.ID && p.Plan_Status === 'Approved' && p.Plan_Date <= today;
+    });
+    var plannedDays = uPlans.length;
+
+    // วิเคราะห์จาก Time_In / Time_Out จริง (ไม่พึ่ง Status ที่ถูก checkout เขียนทับ)
+    var onTimeIn = 0;      // เช้าตรงเวลา (≤ 08:15 = 495 นาที)
+    var lateIn = 0;        // เช้าสาย
+    var reported = 0;      // ส่งรายงานแล้ว
+    var onTimeReport = 0;  // ส่งรายงานตรงเวลา (≤ 17:00 = 1020 นาที)
+    var lateReport = 0;    // ส่งรายงานสาย
+    var noReport = 0;      // ยังไม่ส่งรายงาน
+    var totalPoints = 0;
+    var minsArr = [];
+
+    uLogs.forEach(function(l) {
+      var dayPts = 30; // มาทำงาน = 30 คะแนน
+
+      // ตรวจเวลาเช็คอินจาก Time_In จริง
+      if (l.Time_In) {
+        var timePart = String(l.Time_In).split(' ').pop();
+        var tp = timePart.split(':');
+        var inMins = parseInt(tp[0]) * 60 + parseInt(tp[1]);
+        minsArr.push(inMins);
+        if (inMins <= 495) {
+          onTimeIn++;
+          dayPts += 30;
+        } else {
+          lateIn++;
         }
-      });
-      if (minsArr.length > 0) {
-        avgMin = Math.round(minsArr.reduce(function(a, b) { return a + b; }, 0) / minsArr.length);
-        avgTimeStr = String(Math.floor(avgMin / 60)).padStart(2, '0') + ':' + String(avgMin % 60).padStart(2, '0');
       }
+
+      // ตรวจการส่งรายงานจาก Time_Out จริง
+      if (l.Time_Out && String(l.Time_Out).trim() !== '') {
+        reported++;
+        dayPts += 20;
+        var outPart = String(l.Time_Out).split(' ').pop();
+        var op = outPart.split(':');
+        var outMins = parseInt(op[0]) * 60 + parseInt(op[1]);
+        if (outMins <= 1020) {
+          onTimeReport++;
+          dayPts += 20;
+        } else {
+          lateReport++;
+        }
+      } else {
+        noReport++;
+      }
+
+      totalPoints += dayPts;
+    });
+
+    var attendedDays = uLogs.length;
+    var absentDays = Math.max(0, plannedDays - attendedDays);
+
+    // Engagement Score: คิดจากวันที่มีแผนทั้งหมด (วันขาด = 0 คะแนน)
+    var maxPoints = plannedDays > 0 ? plannedDays * 100 : 1;
+    var engagementScore = plannedDays > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
+
+    // เวลาเช็คอินเฉลี่ย
+    var avgTimeStr = '-';
+    if (minsArr.length > 0) {
+      var avgMin = Math.round(minsArr.reduce(function(a, b) { return a + b; }, 0) / minsArr.length);
+      avgTimeStr = String(Math.floor(avgMin / 60)).padStart(2, '0') + ':' + String(avgMin % 60).padStart(2, '0');
     }
 
     perUserStats.push({
       name: u.Name,
       username: u.Username,
-      totalDays: uTotal,
-      onTime: uOnTime,
-      late: uLate,
-      rate: rate,
+      plannedDays: plannedDays,
+      attendedDays: attendedDays,
+      absentDays: absentDays,
+      onTimeIn: onTimeIn,
+      lateIn: lateIn,
+      reported: reported,
+      onTimeReport: onTimeReport,
+      lateReport: lateReport,
+      noReport: noReport,
+      totalPoints: totalPoints,
+      engagementScore: engagementScore,
       avgCheckIn: avgTimeStr
     });
   });
-  perUserStats.sort(function(a, b) { return b.rate - a.rate || b.totalDays - a.totalDays; });
+  perUserStats.sort(function(a, b) { return b.engagementScore - a.engagementScore || b.attendedDays - a.attendedDays; });
 
   // ===== NEW: ความคืบหน้ารอบงาน =====
   var activeCycles = cycles.filter(function(c) { return c.Status === 'Active'; });
@@ -604,11 +665,16 @@ function updateScheduleRequestStatus(token, reqId, newStatus) {
     var pStatusIdx = planHeaders.indexOf('Plan_Status');
     var pDayTypeIdx = planHeaders.indexOf('Day_Type');
 
+    // แปลงวันที่จาก request เป็น string yyyy-MM-dd (แก้ปัญหา Date object === Date object → false)
+    var origDateStr = (request.originalDate instanceof Date) ? formatDate_(request.originalDate) : String(request.originalDate);
+    var reqDateStr = (request.requestedDate instanceof Date) ? formatDate_(request.requestedDate) : String(request.requestedDate);
+
     if (request.type === 'Half_Day') {
       // ===== ครึ่งวัน: เปลี่ยน Day_Type ของวันเดิมเป็น Half + เพิ่มวันชดเชยเป็น Half =====
       for (var j = 1; j < planData.length; j++) {
-        if (planData[j][pUserIdIdx] === request.userId && planData[j][pCycleIdIdx] === request.cycleId) {
-          if (planData[j][pDateIdx] === request.originalDate && planData[j][pStatusIdx] === 'Approved') {
+        if (String(planData[j][pUserIdIdx]) === String(request.userId) && String(planData[j][pCycleIdIdx]) === String(request.cycleId)) {
+          var planDateStr = (planData[j][pDateIdx] instanceof Date) ? formatDate_(planData[j][pDateIdx]) : String(planData[j][pDateIdx]);
+          if (planDateStr === origDateStr && planData[j][pStatusIdx] === 'Approved') {
             if (pDayTypeIdx >= 0) {
               planSheet.getRange(j + 1, pDayTypeIdx + 1).setValue('Half');
             }
@@ -617,19 +683,20 @@ function updateScheduleRequestStatus(token, reqId, newStatus) {
       }
       // เพิ่มวันชดเชย (ครึ่งวัน)
       var newPlanId = 'PLN' + new Date().getTime();
-      planSheet.appendRow([newPlanId, '', request.cycleId, request.userId, request.name, request.requestedDate, 'Approved', 'ชดเชยครึ่งวันจาก ' + request.originalDate, '', now, '', now, 'Half']);
+      planSheet.appendRow([newPlanId, '', request.cycleId, request.userId, request.name, reqDateStr, 'Approved', 'ชดเชยครึ่งวันจาก ' + origDateStr, '', now, '', now, 'Half']);
     } else {
       // ===== สลับวัน: เปลี่ยนวันเดิมเป็น Swapped_Out + เพิ่มวันใหม่เป็น Full =====
       for (var j = 1; j < planData.length; j++) {
-        if (planData[j][pUserIdIdx] === request.userId && planData[j][pCycleIdIdx] === request.cycleId) {
-          if (planData[j][pDateIdx] === request.originalDate && planData[j][pStatusIdx] === 'Approved') {
+        if (String(planData[j][pUserIdIdx]) === String(request.userId) && String(planData[j][pCycleIdIdx]) === String(request.cycleId)) {
+          var planDateStr = (planData[j][pDateIdx] instanceof Date) ? formatDate_(planData[j][pDateIdx]) : String(planData[j][pDateIdx]);
+          if (planDateStr === origDateStr && planData[j][pStatusIdx] === 'Approved') {
             planSheet.getRange(j + 1, pStatusIdx + 1).setValue('Swapped_Out');
           }
         }
       }
       // เพิ่มวันใหม่ (เต็มวัน)
       var newPlanId = 'PLN' + new Date().getTime();
-      planSheet.appendRow([newPlanId, '', request.cycleId, request.userId, request.name, request.requestedDate, 'Approved', 'สลับจากวันที่ ' + request.originalDate, '', now, '', now, 'Full']);
+      planSheet.appendRow([newPlanId, '', request.cycleId, request.userId, request.name, reqDateStr, 'Approved', 'สลับจากวันที่ ' + origDateStr, '', now, '', now, 'Full']);
     }
   }
 
@@ -999,4 +1066,82 @@ function rejectUser(token, userId) {
     }
   }
   return { success: false, message: 'ไม่พบผู้ใช้หรือสถานะไม่ถูกต้อง' };
+}
+
+// ==================== ONE-TIME REPAIR ====================
+// รันฟังก์ชันนี้ครั้งเดียวเพื่อแก้ข้อมูล WorkPlans ที่สลับวันแล้วแต่วันเดิมยังเป็น Approved
+// (เกิดจาก bug Date object comparison ก่อนหน้านี้)
+// ⚠️ ลบฟังก์ชันนี้ออกหลังรันเสร็จแล้วได้
+function repairSwappedPlans() {
+  var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+
+  // 1. อ่าน ScheduleRequests ที่ Approved แล้ว
+  var reqSheet = ss.getSheetByName('ScheduleRequests');
+  var reqData = reqSheet.getDataRange().getValues();
+  var reqHeaders = reqData[0];
+  var rStatusIdx = reqHeaders.indexOf('Status');
+  var rOrigIdx = reqHeaders.indexOf('Original_Date');
+  var rUserIdIdx = reqHeaders.indexOf('UserID');
+  var rCycleIdIdx = reqHeaders.indexOf('CycleID');
+  var rTypeIdx = reqHeaders.indexOf('Request_Type');
+
+  var approvedRequests = [];
+  for (var i = 1; i < reqData.length; i++) {
+    if (reqData[i][rStatusIdx] === 'Approved') {
+      var origDate = reqData[i][rOrigIdx];
+      approvedRequests.push({
+        userId: String(reqData[i][rUserIdIdx]),
+        cycleId: String(reqData[i][rCycleIdIdx]),
+        originalDate: (origDate instanceof Date) ? formatDate_(origDate) : String(origDate),
+        type: rTypeIdx >= 0 ? (reqData[i][rTypeIdx] || 'Swap') : 'Swap'
+      });
+    }
+  }
+
+  if (approvedRequests.length === 0) {
+    Logger.log('ไม่มีคำร้องที่ Approved — ไม่ต้องแก้ไข');
+    return;
+  }
+
+  // 2. อ่าน WorkPlans แล้วหาแถวที่ต้องแก้
+  var planSheet = ss.getSheetByName('WorkPlans');
+  var planData = planSheet.getDataRange().getValues();
+  var planHeaders = planData[0];
+  var pUserIdIdx = planHeaders.indexOf('UserID');
+  var pCycleIdIdx = planHeaders.indexOf('CycleID');
+  var pDateIdx = planHeaders.indexOf('Plan_Date');
+  var pStatusIdx = planHeaders.indexOf('Plan_Status');
+  var pDayTypeIdx = planHeaders.indexOf('Day_Type');
+
+  var fixCount = 0;
+
+  for (var r = 0; r < approvedRequests.length; r++) {
+    var req = approvedRequests[r];
+    for (var j = 1; j < planData.length; j++) {
+      var planUserId = String(planData[j][pUserIdIdx]);
+      var planCycleId = String(planData[j][pCycleIdIdx]);
+      var planDate = planData[j][pDateIdx];
+      var planDateStr = (planDate instanceof Date) ? formatDate_(planDate) : String(planDate);
+      var planStatus = planData[j][pStatusIdx];
+
+      if (planUserId === req.userId && planCycleId === req.cycleId && planDateStr === req.originalDate && planStatus === 'Approved') {
+        if (req.type === 'Half_Day') {
+          if (pDayTypeIdx >= 0) {
+            var currentDayType = planData[j][pDayTypeIdx];
+            if (currentDayType !== 'Half') {
+              planSheet.getRange(j + 1, pDayTypeIdx + 1).setValue('Half');
+              Logger.log('FIXED Half_Day: ' + req.userId + ' | ' + req.originalDate + ' | Day_Type → Half');
+              fixCount++;
+            }
+          }
+        } else {
+          planSheet.getRange(j + 1, pStatusIdx + 1).setValue('Swapped_Out');
+          Logger.log('FIXED Swap: ' + req.userId + ' | ' + req.originalDate + ' | Plan_Status → Swapped_Out');
+          fixCount++;
+        }
+      }
+    }
+  }
+
+  Logger.log('===== REPAIR COMPLETE: แก้ไข ' + fixCount + ' แถว =====');
 }

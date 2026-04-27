@@ -1499,44 +1499,98 @@ function renderDashboard(area) {
   html += '</div></div>';
   html += '</div>';
 
-  // ===== RANKING รายบุคคล =====
+  // ===== RANKING รายบุคคล (Engagement Score) =====
   var perUser = d.perUserStats || [];
   if (perUser.length > 0) {
     html += '<div class="card mb-4">';
-    html += '<div class="flex items-center justify-between mb-3"><h3 class="font-semibold text-forest-700">🏆 สถิติรายบุคคล (เรียงตามอัตราตรงเวลา)</h3>';
-    html += '<span class="text-xs text-gray-400">' + perUser.length + ' คน</span></div>';
-    html += '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr>';
-    html += '<th class="text-left p-2 bg-forest-600 text-white rounded-tl-lg">#</th>';
-    html += '<th class="text-left p-2 bg-forest-600 text-white">ชื่อ</th>';
-    html += '<th class="text-center p-2 bg-forest-600 text-white">วันทำงาน</th>';
-    html += '<th class="text-center p-2 bg-forest-600 text-white">ตรงเวลา</th>';
-    html += '<th class="text-center p-2 bg-forest-600 text-white">สาย</th>';
-    html += '<th class="text-center p-2 bg-forest-600 text-white">อัตรา</th>';
-    html += '<th class="text-center p-2 bg-forest-600 text-white">เฉลี่ยเข้างาน</th>';
-    html += '<th class="text-left p-2 bg-forest-600 text-white rounded-tr-lg" style="min-width:120px">ระดับ</th>';
+    html += '<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">';
+    html += '<h3 class="font-semibold text-forest-700">🏆 จัดอันดับการมีส่วนร่วม (Engagement Score)</h3>';
+    html += '<span class="text-xs text-gray-400 mt-1 sm:mt-0">' + perUser.length + ' คน | เกณฑ์: เช้าตรงเวลา 30 + มาทำงาน 30 + รายงานตรง 20 + ส่งรายงาน 20 = 100/วัน</span></div>';
+
+    // TOP 3 Highlight
+    html += '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">';
+    var topColors = ['from-yellow-400 to-amber-500', 'from-gray-300 to-gray-400', 'from-orange-300 to-orange-400'];
+    var topIcons = ['🥇', '🥈', '🥉'];
+    var topLabels = ['อันดับ 1', 'อันดับ 2', 'อันดับ 3'];
+    for (var ti = 0; ti < Math.min(3, perUser.length); ti++) {
+      var tu = perUser[ti];
+      var sc = tu.engagementScore;
+      var scColor = sc >= 90 ? '#22c55e' : sc >= 70 ? '#f59e0b' : '#ef4444';
+      html += '<div class="relative overflow-hidden rounded-xl bg-gradient-to-br ' + topColors[ti] + ' text-white p-4 shadow">';
+      html += '<div class="flex items-center gap-2 mb-2"><span class="text-2xl">' + topIcons[ti] + '</span>';
+      html += '<div><p class="font-bold text-sm leading-tight">' + tu.name + '</p>';
+      html += '<p class="text-xs opacity-80">' + topLabels[ti] + '</p></div></div>';
+      html += '<div class="flex items-end justify-between">';
+      html += '<div><p class="text-3xl font-black">' + sc + '<span class="text-base font-normal opacity-80">%</span></p></div>';
+      html += '<div class="text-right text-xs opacity-90 leading-relaxed">';
+      html += '<p>เช้าตรง ' + tu.onTimeIn + '/' + tu.attendedDays + '</p>';
+      html += '<p>รายงานตรง ' + tu.onTimeReport + '/' + tu.reported + '</p>';
+      html += '<p>ขาด ' + tu.absentDays + ' วัน</p>';
+      html += '</div></div></div>';
+    }
+    html += '</div>';
+
+    // ตารางเต็ม
+    html += '<div class="overflow-x-auto"><table class="w-full text-xs sm:text-sm"><thead><tr>';
+    html += '<th class="p-2 bg-forest-600 text-white rounded-tl-lg text-center">#</th>';
+    html += '<th class="p-2 bg-forest-600 text-white text-left">ชื่อ</th>';
+    html += '<th class="p-2 bg-forest-600 text-white text-center" title="คะแนนรวม / (วันมีแผน×100) × 100">Score</th>';
+    html += '<th class="p-2 bg-forest-600 text-white text-center" title="วันที่มีแผน Approved ถึงวันนี้">แผน</th>';
+    html += '<th class="p-2 bg-forest-600 text-white text-center" title="วันที่มาเช็คอิน">มา</th>';
+    html += '<th class="p-2 bg-forest-600 text-white text-center" title="มีแผนแต่ไม่มาเช็คอิน">ขาด</th>';
+    html += '<th class="p-2 bg-forest-600 text-white text-center" title="เช็คอิน ≤ 08:15">เช้าตรง</th>';
+    html += '<th class="p-2 bg-forest-600 text-white text-center" title="เช็คอิน > 08:15">เช้าสาย</th>';
+    html += '<th class="p-2 bg-forest-600 text-white text-center" title="ส่งรายงาน ≤ 17:00">รายงานตรง</th>';
+    html += '<th class="p-2 bg-forest-600 text-white text-center" title="ส่งรายงาน > 17:00">รายงานสาย</th>';
+    html += '<th class="p-2 bg-forest-600 text-white text-center" title="ยังไม่ส่งรายงาน">ไม่ส่ง</th>';
+    html += '<th class="p-2 bg-forest-600 text-white text-center">เฉลี่ยเข้า</th>';
+    html += '<th class="p-2 bg-forest-600 text-white rounded-tr-lg text-center" style="min-width:100px">ระดับ</th>';
     html += '</tr></thead><tbody>';
     perUser.forEach(function(u, idx) {
+      var sc = u.engagementScore;
       var badge, badgeColor;
-      if (u.rate >= 90) { badge = '🟢 ดีเยี่ยม'; badgeColor = 'bg-green-100 text-green-700'; }
-      else if (u.rate >= 70) { badge = '🟡 ปานกลาง'; badgeColor = 'bg-amber-100 text-amber-700'; }
-      else if (u.totalDays > 0) { badge = '🔴 ต้องปรับปรุง'; badgeColor = 'bg-red-100 text-red-700'; }
-      else { badge = '⚪ ยังไม่มีข้อมูล'; badgeColor = 'bg-gray-100 text-gray-500'; }
+      if (sc >= 90) { badge = '⭐ ดีเยี่ยม'; badgeColor = 'bg-green-100 text-green-700'; }
+      else if (sc >= 75) { badge = '🟢 ดี'; badgeColor = 'bg-emerald-100 text-emerald-700'; }
+      else if (sc >= 60) { badge = '🟡 ปานกลาง'; badgeColor = 'bg-amber-100 text-amber-700'; }
+      else if (u.plannedDays > 0) { badge = '🔴 ต้องปรับปรุง'; badgeColor = 'bg-red-100 text-red-700'; }
+      else { badge = '⚪ ยังไม่มีแผน'; badgeColor = 'bg-gray-100 text-gray-500'; }
       var rankIcon = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
-      html += '<tr class="border-b border-gray-100 hover:bg-gray-50">';
+      var scColor = sc >= 90 ? '#22c55e' : sc >= 75 ? '#10b981' : sc >= 60 ? '#f59e0b' : '#ef4444';
+      var rowBg = idx < 3 ? ' bg-amber-50/40' : '';
+      html += '<tr class="border-b border-gray-100 hover:bg-gray-50' + rowBg + '">';
       html += '<td class="p-2 text-center font-semibold">' + rankIcon + '</td>';
       html += '<td class="p-2"><span class="font-medium">' + u.name + '</span><br><span class="text-xs text-gray-400">' + u.username + '</span></td>';
-      html += '<td class="p-2 text-center font-semibold">' + u.totalDays + '</td>';
-      html += '<td class="p-2 text-center text-green-600 font-semibold">' + u.onTime + '</td>';
-      html += '<td class="p-2 text-center text-red-500 font-semibold">' + u.late + '</td>';
+      // Score column with bar
       html += '<td class="p-2 text-center">';
-      html += '<span class="font-bold" style="color:' + (u.rate >= 90 ? '#22c55e' : u.rate >= 70 ? '#f59e0b' : '#ef4444') + '">' + u.rate + '%</span>';
-      html += '<div class="w-full bg-gray-200 rounded-full h-1.5 mt-1"><div class="h-1.5 rounded-full" style="width:' + u.rate + '%;background:' + (u.rate >= 90 ? '#22c55e' : u.rate >= 70 ? '#f59e0b' : '#ef4444') + '"></div></div>';
+      html += '<span class="font-bold text-base" style="color:' + scColor + '">' + sc + '</span>';
+      html += '<div class="w-full bg-gray-200 rounded-full h-1.5 mt-1"><div class="h-1.5 rounded-full" style="width:' + sc + '%;background:' + scColor + '"></div></div>';
       html += '</td>';
-      html += '<td class="p-2 text-center text-gray-600">' + u.avgCheckIn + ' น.</td>';
-      html += '<td class="p-2"><span class="text-xs px-2 py-0.5 rounded-full ' + badgeColor + '">' + badge + '</span></td>';
+      html += '<td class="p-2 text-center text-gray-600">' + u.plannedDays + '</td>';
+      html += '<td class="p-2 text-center font-semibold text-blue-600">' + u.attendedDays + '</td>';
+      html += '<td class="p-2 text-center font-semibold ' + (u.absentDays > 0 ? 'text-red-500' : 'text-gray-400') + '">' + u.absentDays + '</td>';
+      html += '<td class="p-2 text-center text-green-600 font-semibold">' + u.onTimeIn + '</td>';
+      html += '<td class="p-2 text-center text-orange-500 font-semibold">' + u.lateIn + '</td>';
+      html += '<td class="p-2 text-center text-green-600 font-semibold">' + u.onTimeReport + '</td>';
+      html += '<td class="p-2 text-center text-orange-500 font-semibold">' + u.lateReport + '</td>';
+      html += '<td class="p-2 text-center ' + (u.noReport > 0 ? 'text-red-500 font-semibold' : 'text-gray-400') + '">' + u.noReport + '</td>';
+      html += '<td class="p-2 text-center text-gray-600">' + u.avgCheckIn + '</td>';
+      html += '<td class="p-2 text-center"><span class="text-xs px-2 py-0.5 rounded-full ' + badgeColor + '">' + badge + '</span></td>';
       html += '</tr>';
     });
-    html += '</tbody></table></div></div>';
+    html += '</tbody></table></div>';
+
+    // คำอธิบายเกณฑ์
+    html += '<div class="mt-3 p-3 bg-gray-50 rounded-lg">';
+    html += '<p class="text-xs font-semibold text-gray-500 mb-1">📐 เกณฑ์คะแนนต่อวัน (เต็ม 100)</p>';
+    html += '<div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">';
+    html += '<span>🟢 มาทำงาน = <b>30</b></span>';
+    html += '<span>🟢 เช้าตรงเวลา (≤08:15) = <b>30</b></span>';
+    html += '<span>🔵 ส่งรายงาน = <b>20</b></span>';
+    html += '<span>🔵 รายงานตรงเวลา (≤17:00) = <b>20</b></span>';
+    html += '<span>🔴 ขาด/ไม่ส่ง = <b>0</b></span>';
+    html += '</div>';
+    html += '<p class="text-xs text-gray-400 mt-1">Score = คะแนนรวมทุกวัน ÷ (วันมีแผน × 100) × 100 — วันขาดงานจะทำให้คะแนนลดลงอัตโนมัติ</p>';
+    html += '</div></div>';
   }
 
   // ===== CYCLE PROGRESS =====
