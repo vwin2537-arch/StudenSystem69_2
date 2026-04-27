@@ -35,10 +35,11 @@
 ## 📁 โครงสร้างไฟล์
 
 ```
-├── Code.gs       — Backend: ฟังก์ชันทั้งหมดของ Google Apps Script
-├── index.html    — Frontend: HTML + CSS + JavaScript (SPA ทั้งหมดในไฟล์เดียว)
-├── Draft.md      — เอกสาร draft / brainstorm
-└── README.md     — ไฟล์นี้ (AI Context Document)
+├── Code.gs          — Backend: ฟังก์ชันทั้งหมดของ Google Apps Script (Web App)
+├── LineBotCode.gs   — LINE Bot: รายงานเช้า/เย็นอัตโนมัติ + webhook (แยก GAS Project)
+├── index.html       — Frontend: HTML + CSS + JavaScript (SPA ทั้งหมดในไฟล์เดียว)
+├── Draft.md         — เอกสาร draft / brainstorm
+└── README.md        — ไฟล์นี้ (AI Context Document)
 ```
 
 > ⚠️ เวลา deploy ไปที่ Google Apps Script ต้องใช้ชื่อไฟล์ HTML ว่า `index` (ไม่มีนามสกุล)  
@@ -442,7 +443,7 @@ git push
 - `todayAvgTime` — เวลาเช็คอินเฉลี่ย/เร็วสุด/ช้าสุดวันนี้
 - `dailyStats` — 14 วันล่าสุด (array)
 - `weekdayStats` — วิเคราะห์ตามวัน จ-อา
-- `perUserStats` — สถิติรายบุคคล เรียงตามอัตราตรงเวลา
+- `perUserStats` — Engagement Score รายบุคคล (วิเคราะห์ Time_In / Time_Out อิสระ, นับวันขาด, เต็ม 100/วัน)
 - `cycleProgress` — ความคืบหน้ารอบงาน + ตรวจว่าช้ากว่ากำหนดหรือไม่
 - `weekComparison` — เทียบสัปดาห์นี้ vs สัปดาห์ก่อน
 - `recentActivity` — 10 กิจกรรมล่าสุด (checkin/checkout/plan/request)
@@ -450,10 +451,64 @@ git push
 **index.html — `renderDashboard` เขียนใหม่ทั้งหมด:**
 - KPI cards พร้อม progress bar + trend indicator (▲▼)
 - เพิ่มกราฟ Line (แนวโน้ม 14 วัน) และ Bar (วิเคราะห์รายวันสัปดาห์)
-- Ranking Table รายบุคคล + badge + เวลาเฉลี่ย
+- Ranking Table: TOP 3 cards + ตาราง 13 คอลัมน์ (score, แผน, มา, ขาด, เช้าตรง/สาย, รายงานตรง/สาย/ไม่ส่ง, เฉลี่ยเข้า, ระดับ)
 - Cycle Progress cards
 - Activity Feed timeline
 - Alert bar คลิกได้ (switchTab)
+
+---
+
+### April 27, 2026 — Rewrite Engagement Score Ranking System
+**แก้ไขไฟล์:** `Code.gs`, `index.html`
+
+**ปัญหาเดิม:** ระบบจัดอันดับใช้ `Status` จาก AttendanceLog ซึ่งถูก checkout เขียนทับ → คนเช้าสายแต่ส่งรายงานตรงเวลาถูกนับว่า "ตรงเวลา" + ไม่นับรายงานเย็น + ไม่นับคนขาด
+
+**Engagement Score ใหม่ (ต่อวัน เต็ม 100):**
+| เกณฑ์ | คะแนน | เงื่อนไข |
+|---|---|---|
+| มาทำงาน | 30 | มี check-in record |
+| เช้าตรงเวลา | 30 | `Time_In` ≤ 08:15 |
+| ส่งรายงาน | 20 | มี `Time_Out` |
+| รายงานตรงเวลา | 20 | `Time_Out` ≤ 17:00 |
+| ขาดงาน | 0 | มีแผนแต่ไม่มา |
+
+**สูตร:** `engagementScore = totalPoints / (plannedDays × 100) × 100`
+
+**Backend:** วิเคราะห์ `Time_In` / `Time_Out` อิสระจากกัน (ไม่พึ่ง Status), นับ plannedDays จาก WorkPlans (Approved, ≤ today)
+**Frontend:** TOP 3 highlight cards + ตาราง 13 คอลัมน์ + คำอธิบายเกณฑ์ด้านล่าง
+
+---
+
+### April 26, 2026 — Bug Fix: Schedule Swap ไม่มีผลใน WorkPlans
+**แก้ไขไฟล์:** `Code.gs`
+
+**สาเหตุ:** ฟังก์ชัน `updateScheduleRequestStatus` ใช้ `getDataRange().getValues()` แบบ raw ซึ่ง Google Sheets คืน Date เป็น JS Date object แต่เปรียบเทียบด้วย `===` (reference comparison) → ไม่เจอแถวที่ตรงกัน → วันเดิมไม่ถูกเปลี่ยนเป็น `Swapped_Out`
+
+**แก้ไข:**
+- เพิ่ม normalize Date→string ก่อนเปรียบเทียบ (`instanceof Date ? formatDate_() : String()`)
+- เพิ่ม `String()` wrapper รอบ UserID/CycleID เพื่อป้องกัน type mismatch
+- เขียน date ลง appendRow เป็น string `yyyy-MM-dd` แทน Date object
+
+---
+
+## 🤖 LINE Bot (`LineBotCode.gs`)
+
+> ⚠️ ไฟล์นี้ **deploy แยก GAS Project** จาก Web App หลัก แต่ใช้ Google Sheet ID เดียวกัน
+
+**Functions:**
+| ฟังก์ชัน | Trigger | หมายเหตุ |
+|---|---|---|
+| `sendMorningReport()` | 08:30 ทุกวัน | สรุปเช้า: ใครมา/ไม่มา/สาย |
+| `sendEveningReport()` | 17:30 ทุกวัน | สรุปเย็น: ใครส่ง/ยังไม่ส่งรายงาน |
+| `doPost(e)` | LINE Webhook | ตอบ "ทดสอบ" → ส่งรายงานทั้ง 2 ช่วง |
+| `setupTriggers()` | รันครั้งเดียว | ตั้ง time-based trigger |
+
+**Morning Report ดึงข้อมูลจาก:** `WorkPlans` (Plan_Date = today, Plan_Status = Approved) + `AttendanceLog` (Date = today)  
+**Evening Report ดึงข้อมูลจาก:** `AttendanceLog` (Time_Out มี/ไม่มี, Status = Completed/Late_Report)
+
+**Config ที่ต้องตั้ง:**
+- `BOT_CONFIG.LINE_CHANNEL_ACCESS_TOKEN` — จาก LINE Developers Console
+- `BOT_CONFIG.LINE_GROUP_ID` — ได้จากเชิญ bot เข้ากลุ่ม (bot จะ reply Group ID)
 
 ---
 
@@ -467,3 +522,5 @@ git push
 6. **Frontend date** — ใช้ `formatDateLocal()` (local TZ) ไม่ใช่ `toISOString()` เพื่อป้องกัน off-by-one
 7. **Photo compression** — ทำที่ Frontend ก่อน base64 → ส่งไป GAS
 8. **Submission_ID** — Admin อนุมัติ/ปฏิเสธ ทีละ Submission (หลายแถวพร้อมกัน) ไม่ใช่ทีละ Plan
+9. **`getDataRange().getValues()` vs `getSheetData_()`** — raw values คืน Date object; ห้ามเปรียบเทียบ Date กับ Date ด้วย `===` ต้อง normalize เป็น string ก่อนเสมอ
+10. **`Status` ใน AttendanceLog ถูก checkout เขียนทับ** — checkout เปลี่ยน `On_Time`→`Completed` หรือ `Late`→`Late_Report` ทำให้หาย ข้อมูลเช้าสาย/ตรงเวลาจริงต้องดูจาก `Time_In` เท่านั้น
