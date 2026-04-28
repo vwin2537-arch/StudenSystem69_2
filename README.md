@@ -458,6 +458,19 @@ git push
 
 ---
 
+### April 28, 2026 — Fix: ส่งรายงานไม่ได้เพราะ Google Drive Error
+**แก้ไขไฟล์:** `Code.gs`
+
+**อาการ:** User 1 คนส่งรายงานเย็นไม่ได้ ขึ้น "Exception: ข้อผิดพลาดของบริการ: ไดรฟ์"
+
+**สาเหตุ:** `checkOut` ไม่มี try-catch ครอบ `uploadPhotos_()` — เมื่อ Drive ขัดข้อง (ไฟล์ใหญ่/transient error) ก็ crash ทั้ง function → ส่งรายงานไม่ได้เลย (เทียบกับ `checkIn` ที่มี try-catch แล้ว)
+
+**แก้ไข:**
+- `checkOut`: เพิ่ม try-catch ครอบ `uploadPhotos_` — ถ้าอัปโหลดรูปไม่ได้ยังบันทึกรายงานได้ (บันทึก error ไว้ใน Photo_URL)
+- `uploadPhotos_`: เพิ่ม try-catch รอบแต่ละรูป — รูปใดเสียก็ข้ามไป ไม่ block รูปอื่น
+
+---
+
 ### April 27, 2026 — Rewrite Engagement Score Ranking System
 **แก้ไขไฟล์:** `Code.gs`, `index.html`
 
