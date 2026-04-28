@@ -821,7 +821,13 @@ function checkOut(token, taskReport, photoDataArray) {
   // อัปโหลดรูปภาพ
   var folderUrl = '';
   if (photoDataArray && photoDataArray.length > 0) {
-    folderUrl = uploadPhotos_(user.name, today, photoDataArray);
+    try {
+      folderUrl = uploadPhotos_(user.name, today, photoDataArray);
+    } catch (e) {
+      // อัปโหลดรูปไม่ได้ แต่ยังบันทึกรายงานได้
+      Logger.log('uploadPhotos_ error for ' + user.name + ': ' + e.message);
+      folderUrl = 'UPLOAD_ERROR: ' + e.message;
+    }
   }
 
   var nowOut = new Date();
@@ -873,8 +879,12 @@ function uploadPhotos_(userName, dateStr, photoDataArray) {
   var userFolder = getOrCreateFolder_(dateFolder, userName);
 
   photoDataArray.forEach(function(photoData, index) {
-    var blob = decodeBase64ToBlob_(photoData.data, photoData.mimeType, photoData.fileName || (userName + '_' + dateStr + '_' + (index + 1) + '.jpg'));
-    userFolder.createFile(blob);
+    try {
+      var blob = decodeBase64ToBlob_(photoData.data, photoData.mimeType, photoData.fileName || (userName + '_' + dateStr + '_' + (index + 1) + '.jpg'));
+      userFolder.createFile(blob);
+    } catch (e) {
+      Logger.log('uploadPhotos_ file #' + (index + 1) + ' failed for ' + userName + ': ' + e.message);
+    }
   });
 
   // พยายามแชร์โฟลเดอร์ (ถ้าไม่มีสิทธิ์ก็ข้ามไป ไม่ crash)
